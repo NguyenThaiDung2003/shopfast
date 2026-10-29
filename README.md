@@ -65,15 +65,32 @@ Tài khoản mẫu (mật khẩu chung = `SEED_USER_PASSWORD` trong `.env`):
 ```bash
 curl http://localhost:3000/api/health
 
-# Danh sách sản phẩm: phân trang + lọc theo danh mục, thương hiệu, khoảng giá (VND)
+# Danh sách sản phẩm: phân trang + lọc theo danh mục, thương hiệu, khoảng giá (VND) + sắp xếp
 curl "http://localhost:3000/api/products?page=1&limit=5"
-curl "http://localhost:3000/api/products?categoryId=1&minPrice=5000000&maxPrice=20000000"
+curl "http://localhost:3000/api/products?categoryId=1&minPrice=5000000&maxPrice=20000000&sort=price_asc"
+
+# Chi tiết sản phẩm
+curl http://localhost:3000/api/products/1
 
 # Lỗi trả về tiếng Việt
 curl "http://localhost:3000/api/products?minPrice=9000000&maxPrice=1000"
 ```
 
 Danh mục: `1` Điện thoại, `2` Laptop, `3` Phụ kiện, `4` Âm thanh, `5` Gia dụng.
+
+#### Catalog
+
+| Method | Endpoint            | Quyền            | Mô tả                                                                                                                                                                     |
+| ------ | ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/products`     | công khai        | `page` (1–1000), `limit` (1–100, mặc định 20), `categoryId`, `brandId`, `minPrice`, `maxPrice`, `sort` = `newest` (mặc định) \| `price_asc` \| `price_desc` \| `name_asc` |
+| GET    | `/api/products/:id` | công khai        | Chi tiết sản phẩm                                                                                                                                                         |
+| PATCH  | `/api/products/:id` | ADMIN, WAREHOUSE | Body: `price` (chỉ ADMIN), `stock` (đặt số lượng, kiểm kê) **hoặc** `stockDelta` (+ nhập / − xuất kho). Phát event `product.updated`                                      |
+
+```bash
+# Warehouse nhập thêm 20 sản phẩm (TOKEN lấy như phần Xác thực, đăng nhập warehouse01)
+curl -X PATCH http://localhost:3000/api/products/1 -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"stockDelta":20}'
+```
 
 #### Xác thực
 

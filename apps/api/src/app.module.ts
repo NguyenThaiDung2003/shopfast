@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { envValidationSchema } from './config/env.validation';
 import { PrismaModule } from './database/prisma.module';
 import { RedisModule } from './database/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
-import { ProductsModule } from './modules/products/products.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -20,12 +21,14 @@ import { UsersModule } from './modules/users/users.module';
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: false, allowUnknown: true },
     }),
+    // Domain event nội bộ (ADR-0004).
+    EventEmitterModule.forRoot(),
     PrismaModule,
     RedisModule,
     AuthModule,
     UsersModule,
     HealthModule,
-    ProductsModule,
+    CatalogModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
 })

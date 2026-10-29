@@ -1,0 +1,256 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Role } from '@prisma/client';
+import { AppException } from '../../common/exceptions/app.exception';
+import type { AuthUser } from '../auth/auth.types';
+import { ProductSort } from './catalog.query';
+import {
+  CatalogRepository,
+  ApplyPatchResult,
+  ProductDetail,
+  ProductListItem,
+} from './catalog.repository';
+import { CatalogService, diff } from './catalog.service';
+import { ListProductsQuery } from './dto/list-products.query';
+import { PRODUCT_UPDATED, ProductUpdatedEvent } from './events/product-updated.event';
+
+const admin: AuthUser = { id: 'admin-1', role: Role.ADMIN };
+const warehouse: AuthUser = { id: 'wh-1', role: Role.WAREHOUSE };
+
+const listItem: ProductListItem = {
+  id: 1,
+  sku: 'SF-DT-0001',
+  name: 'Điện thoại Samsung Pro 5',
+  slug: 'dien-thoai-samsung-pro-5-sf-dt-0001',
+  price: 12_490_000,
+  stock: 10,
+  category: { id: 1, name: 'Điện thoại', slug: 'dien-thoai' },
+  brand: { id: 2, name: 'Samsung', slug: 'samsung' },
+};
+const detail: ProductDetail = { ...listItem, description: 'Mô tả', updatedAt: new Date() };
+const current = { price: 12_490_000, stock: 10 };
+
+function query(overrides: Partial<ListProductsQuery> = {}): ListProductsQuery {
+  return Object.assign(new ListProductsQuery(), overrides);
+}
+
+describe('CatalogService', () => {
+  let repository: jest.Mocked<Pick<CatalogRepository, 'findPage' | 'findById' | 'applyPatch'>>;
+  let emitter: { emit: jest.Mock };
+  let service: CatalogService;
+
+  /** Giả lập applyPatch: áp patch lên tồn kho hiện tại như câu UPDATE thật. */
+  function mockApplyPatch(state = current) {
+    repository.applyPatch.mockImplementation(async (_id, patch): Promise<ApplyPatchResult> => {
+      const stock = patch.stock ?? state.stock + (patch.stockDelta ?? 0);
+      if (stock < 0) return { status: 'insufficient_stock', available: state.stock };
+      const after = { price: patch.price ?? state.price, stock };
+      repository.findById.mockResolvedValue({ ...detail, ...after });
+      return { status: 'updated', sku: 'SF-DT-0001', before: state, after };
+    });
+  }
+
+  beforeEach(() => {
+    repository = {
+      findPage: jest.fn().mockResolvedValue({ items: [listItem], total: 45 }),
+      findById: jest.fn(),
+      applyPatch: jest.fn(),
+    };
+    emitter = { emit: jest.fn() };
+    service = new CatalogService(
+      repository as unknown as CatalogRepository,
+      emitter as unknown as EventEmitter2,
+    );
+  });
+
+  describe('list – lọc và phân trang', () => {
+    it('mặc định: trang 1, 20 sản phẩm, sắp mới nhất', async () => {
+      const result = await service.list(query());
+
+      expect(repository.findPage).toHaveBeenCalledWith(
+        { categoryId: undefined, brandId: undefined, minPrice: undefined, maxPrice: undefined },
+        ProductSort.NEWEST,
+        0,
+        20,
+      );
+      expect(result.meta).toEqual({ page: 1, limit: 20, total: 45, totalPages: 3 });
+      expect(result.items).toEqual([listItem]);
+    });
+
+    it('page/limit → offset, truyền đủ bộ lọc và kiểu sắp xếp', async () => {
+      await service.list(
+        query({
+          page: 3,
+          limit: 10,
+          categoryId: 1,
+          brandId: 2,
+          minPrice: 1000,
+          maxPrice: 5000,
+          sort: ProductSort.PRICE_DESC,
+        }),
+      );
+
+      expect(repository.findPage).toHaveBeenCalledWith(
+        { categoryId: 1, brandId: 2, minPrice: 1000, maxPrice: 5000 },
+        ProductSort.PRICE_DESC,
+        20,
+        10,
+      );
+    });
+
+    it('trang vượt quá tổng → items rỗng nhưng meta vẫn đúng', async () => {
+      repository.findPage.mockResolvedValue({ items: [], total: 45 });
+
+      const result = await service.list(query({ page: 10, limit: 20 }));
+
+      expect(repository.findPage).toHaveBeenCalledWith(
+        expect.any(Object),
+        ProductSort.NEWEST,
+        180,
+        20,
+      );
+      expect(result).toEqual({
+        items: [],
+        meta: { page: 10, limit: 20, total: 45, totalPages: 3 },
+      });
+    });
+
+    it('tổng chia hết cho limit không sinh trang thừa', async () => {
+      repository.findPage.mockResolvedValue({ items: [listItem], total: 40 });
+
+      const result = await service.list(query({ limit: 20 }));
+
+      expect(result.meta.totalPages).toBe(2);
+    });
+
+    it('không có sản phẩm → totalPages = 0', async () => {
+      repository.findPage.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await service.list(query());
+
+      expect(result.meta.totalPages).toBe(0);
+    });
+
+    it('minPrice = maxPrice hợp lệ', async () => {
+      await expect(service.list(query({ minPrice: 5000, maxPrice: 5000 }))).resolves.toBeDefined();
+    });
+
+    it('khoảng giá ngược → INVALID_PRICE_RANGE, không truy vấn DB', async () => {
+      const promise = service.list(query({ minPrice: 9000, maxPrice: 1000 }));
+
+      await expect(promise).rejects.toBeInstanceOf(AppException);
+      await expect(promise).rejects.toMatchObject({ code: 'INVALID_PRICE_RANGE' });
+      expect(repository.findPage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findOne', () => {
+    it('trả chi tiết sản phẩm', async () => {
+      repository.findById.mockResolvedValue(detail);
+
+      await expect(service.findOne(1)).resolves.toBe(detail);
+    });
+
+    it('không tồn tại → PRODUCT_NOT_FOUND', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(service.findOne(999)).rejects.toMatchObject({ code: 'PRODUCT_NOT_FOUND' });
+    });
+  });
+
+  describe('update', () => {
+    it('admin đổi giá → lưu và phát product.updated kèm giá cũ/mới', async () => {
+      mockApplyPatch();
+
+      const product = await service.update(1, { price: 9_990_000 }, admin);
+
+      expect(repository.applyPatch).toHaveBeenCalledWith(1, {
+        price: 9_990_000,
+        stock: undefined,
+        stockDelta: undefined,
+      });
+      expect(product.price).toBe(9_990_000);
+      expect(emitter.emit).toHaveBeenCalledTimes(1);
+      const [name, event] = emitter.emit.mock.calls[0]!;
+      expect(name).toBe(PRODUCT_UPDATED);
+      expect(event).toBeInstanceOf(ProductUpdatedEvent);
+      expect(event).toMatchObject({
+        productId: 1,
+        sku: 'SF-DT-0001',
+        changes: { price: { from: 12_490_000, to: 9_990_000 } },
+        updatedBy: admin,
+      });
+      expect(event.changes.stock).toBeUndefined();
+    });
+
+    it('warehouse nhập thêm hàng bằng stockDelta', async () => {
+      mockApplyPatch();
+
+      const product = await service.update(1, { stockDelta: 15 }, warehouse);
+
+      expect(product.stock).toBe(25);
+      expect(emitter.emit.mock.calls[0]![1].changes).toEqual({ stock: { from: 10, to: 25 } });
+    });
+
+    it('warehouse đặt tồn kho tuyệt đối khi kiểm kê', async () => {
+      mockApplyPatch();
+
+      const product = await service.update(1, { stock: 3 }, warehouse);
+
+      expect(product.stock).toBe(3);
+    });
+
+    it('warehouse đổi giá → 403 FORBIDDEN_FIELD, không chạm DB', async () => {
+      await expect(service.update(1, { price: 1 }, warehouse)).rejects.toMatchObject({
+        code: 'FORBIDDEN_FIELD',
+      });
+      expect(repository.applyPatch).not.toHaveBeenCalled();
+    });
+
+    it('body rỗng → EMPTY_UPDATE', async () => {
+      await expect(service.update(1, {}, admin)).rejects.toMatchObject({ code: 'EMPTY_UPDATE' });
+      expect(repository.applyPatch).not.toHaveBeenCalled();
+    });
+
+    it('gửi cả stock và stockDelta → STOCK_CONFLICT', async () => {
+      await expect(service.update(1, { stock: 5, stockDelta: 1 }, admin)).rejects.toMatchObject({
+        code: 'STOCK_CONFLICT',
+      });
+    });
+
+    it('trừ quá tồn kho → 409 INSUFFICIENT_STOCK kèm số còn lại, không phát event', async () => {
+      mockApplyPatch();
+
+      await expect(service.update(1, { stockDelta: -11 }, warehouse)).rejects.toMatchObject({
+        code: 'INSUFFICIENT_STOCK',
+        userMessage: 'Tồn kho không đủ: hiện còn 10, không thể trừ 11.',
+      });
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('giá trị mới giống cũ → không phát event', async () => {
+      mockApplyPatch();
+
+      await service.update(1, { price: current.price, stock: current.stock }, admin);
+
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('không tồn tại → PRODUCT_NOT_FOUND', async () => {
+      repository.applyPatch.mockResolvedValue({ status: 'not_found' });
+
+      await expect(service.update(999, { stock: 1 }, admin)).rejects.toMatchObject({
+        code: 'PRODUCT_NOT_FOUND',
+      });
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('diff', () => {
+    it('chỉ giữ trường thực sự đổi', () => {
+      expect(diff(current, { price: current.price, stock: 11 })).toEqual({
+        stock: { from: 10, to: 11 },
+      });
+      expect(diff(current, current)).toEqual({});
+    });
+  });
+});

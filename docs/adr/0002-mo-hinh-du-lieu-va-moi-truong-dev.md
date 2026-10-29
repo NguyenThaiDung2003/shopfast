@@ -29,6 +29,20 @@ F06 cần danh mục sản phẩm có bộ lọc, đặt đơn không bán vư�
 - **Seed xác định:** cùng dữ liệu ở mọi máy nên test, kịch bản demo và tài liệu (ví dụ "categoryId=1 là Điện thoại") luôn đúng.
 - **Compose dev:** cùng image, cùng mạng nội bộ như production; api gọi DB bằng tên service. Cổng DB/Redis publish chỉ cho công cụ trên máy dev và chỉ trên loopback.
 
+## Index cho catalog (bổ sung, migration `catalog_indexes`)
+
+Truy vấn của `GET /api/products`: lọc `category_id` / `brand_id` (bằng), khoảng `price`, sắp xếp `newest` / `price_asc` / `price_desc` / `name_asc`, luôn kèm `id` làm khoá phụ.
+
+| Index                   | Phục vụ                                                                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `(category_id, price)`  | Lọc danh mục kèm khoảng giá hoặc sắp theo giá trong danh mục – trường hợp phổ biến nhất. Cột đầu vẫn dùng cho lọc riêng `category_id` và cho khoá ngoại |
+| `(brand_id, price)`     | Tương tự cho trang thương hiệu                                                                                                                          |
+| `(price)`               | Lọc/sắp theo giá trên toàn bộ catalog, không kèm danh mục                                                                                               |
+| `(created_at DESC, id)` | Sắp xếp mặc định `newest` có phân trang; khớp đúng thứ tự `ORDER BY created_at DESC, id`                                                                |
+| `sku`, `slug` (unique)  | Tra cứu theo mã sản phẩm (trợ lý AI F01), URL thân thiện                                                                                                |
+
+Hai index đơn cột `category_id`, `brand_id` cũ bị bỏ vì index ghép đã bao phủ chúng (cột đầu tiên). Mỗi index làm chậm thêm một chút khi ghi, nhưng `products` là bảng đọc nhiều ghi ít. Với 200 dòng seed, planner vẫn chọn seq scan (rẻ hơn); index phát huy khi catalog lớn. Kiểm bằng `EXPLAIN` với `SET enable_seqscan = off`. Không thêm index cho `name` vì sắp theo tên ít dùng; khi có tìm kiếm theo tên sẽ dùng full-text/trigram (ADR riêng).
+
 ## Đánh đổi
 
 - `INTEGER` không dùng được cho tiền tệ có phần lẻ (USD). Khi mở rộng đa tiền tệ cần migration sang `BIGINT` theo đơn vị nhỏ nhất kèm cột `currency`.

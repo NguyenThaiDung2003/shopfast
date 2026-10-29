@@ -42,6 +42,14 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Không bao giờ trả `passwordHash` ra ngoài – dùng `PublicUser` / `toPublicUser` của `users.repository.ts`.
 - Kiểm token ở nơi khác (WebSocket F02…) dùng `TokenService.verifyAccessToken` – không tự viết lại.
 - Redis dùng qua token `REDIS_CLIENT` (`src/database/redis.module.ts`); client fail-fast, nơi gọi phải bắt lỗi và suy giảm có kiểm soát (ví dụ `OtpService` trả 503).
+- Id số trên URL parse bằng `ParseIdPipe` (`src/common/pipes/parse-id.pipe.ts`), không dùng `ParseIntPipe`.
+
+## Domain event (ADR-0004)
+
+- Phát bằng `EventEmitter2` (`@nestjs/event-emitter`), tên `<aggregate>.<động từ quá khứ>`, hằng số + class payload trong `modules/<module>/events/` (ví dụ `PRODUCT_UPDATED` trong `modules/catalog/events/product-updated.event.ts`).
+- **Chỉ phát sau khi DB commit** và chỉ khi có thay đổi thật; payload mang giá trị cũ/mới để listener không phải đọc lại DB.
+- Listener: `@OnEvent(PRODUCT_UPDATED, { async: true, suppressErrors: true })`, tự try/catch + log; việc nặng thì đẩy sang queue (F05). Lỗi listener không được làm hỏng request gốc.
+- Cập nhật tồn kho dùng một câu `UPDATE` nguyên tử có điều kiện (`CatalogRepository.applyPatch`), không dùng interactive transaction SELECT-rồi-UPDATE (cạn connection pool khi tranh chấp).
 
 ## Cấu hình & secret
 

@@ -81,9 +81,11 @@ model Product {
   brand      Brand       @relation(fields: [brandId], references: [id])
   orderItems OrderItem[]
 
-  @@index([categoryId])
-  @@index([brandId])
+  // Index cho truy vấn catalog (lý do: ADR-0002 mục Index).
+  @@index([categoryId, price])
+  @@index([brandId, price])
   @@index([price])
+  @@index([createdAt(sort: Desc), id])
   @@map("products")
 }
 
