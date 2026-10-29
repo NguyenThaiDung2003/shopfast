@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+
+# pnpm 10 chặn build script mặc định; chỉ cho phép các gói cần thiết.
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - esbuild
+  - prisma
+
+ignoredBuiltDependencies:
+  - '@nestjs/core'

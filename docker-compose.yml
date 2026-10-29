@@ -1,0 +1,87 @@
+# Môi trường DEV của ShopFast: api + postgres:16 + redis:7.
+# Mọi giá trị nhạy cảm đọc từ file .env ở gốc repo (gitignore, tạo từ .env.example).
+#
+# VỀ CỔNG (PORT):
+# - Postgres và Redis chỉ cần cho api qua mạng nội bộ "backend"; api gọi bằng tên service.
+# - Hai cổng 5432/6379 được publish CHỈ ĐỂ PHỤC VỤ DEV (chạy api bằng `pnpm start:dev`,
+#   Prisma Studio, seed, psql từ máy host) và chỉ bind vào 127.0.0.1 nên không lộ ra mạng LAN.
+# - Môi trường staging/production KHÔNG publish cổng DB/Redis (SRS: không phơi ra Internet);
+#   chỉ Nginx mở 80/443.
+name: shopfast
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Cần đặt POSTGRES_USER trong .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Cần đặt POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Cần đặt POSTGRES_DB trong .env}
+    ports:
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432' # DEV ONLY
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - ${REDIS_PASSWORD:?Cần đặt REDIS_PASSWORD trong .env}
+    environment:
+      # redis-cli đọc mật khẩu từ biến này, tránh lộ mật khẩu trên dòng lệnh healthcheck.
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    ports:
+      - '127.0.0.1:${REDIS_HOST_PORT:-6379}:6379' # DEV ONLY
+    volumes:
+      - redisdata:/data
+    networks: [backend]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: shopfast-api:dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Cần đặt JWT_SECRET trong .env}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-3000}:3000'
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+networks:
+  backend:
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,123 @@
+// Schema Prisma của ShopFast. Lý do chọn Prisma: docs/adr/0001-chon-orm-prisma.md
+// Quyết định mô hình dữ liệu (tiền, khoá chính, ràng buộc): docs/adr/0002-mo-hinh-du-lieu-va-moi-truong-dev.md
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  SUPPORT
+  WAREHOUSE
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         Role     @default(CUSTOMER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("users")
+}
+
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String
+  slug String @unique
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Brand {
+  id   Int    @id @default(autoincrement())
+  name String
+  slug String @unique
+
+  products Product[]
+
+  @@map("brands")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  sku         String   @unique
+  name        String
+  slug        String   @unique
+  description String?
+  /// Giá bán, đơn vị đồng (VND), số nguyên. CHECK price >= 0 trong migration.
+  price       Int
+  /// Tồn kho thực tế. CHECK stock >= 0 trong migration – chặn bán vượt ở tầng DB.
+  stock       Int      @default(0)
+  categoryId  Int      @map("category_id")
+  brandId     Int      @map("brand_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  brand      Brand       @relation(fields: [brandId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([price])
+  @@map("products")
+}
+
+model Order {
+  id          String      @id @default(uuid()) @db.Uuid
+  /// Mã đơn hiển thị cho khách, ví dụ SF-000001.
+  code        String      @unique
+  userId      String      @map("user_id") @db.Uuid
+  status      OrderStatus @default(PENDING_PAYMENT)
+  /// Tổng tiền, đơn vị đồng (VND).
+  totalAmount Int         @map("total_amount")
+  paidAt      DateTime?   @map("paid_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  user  User        @relation(fields: [userId], references: [id])
+  items OrderItem[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int    @id @default(autoincrement())
+  orderId   String @map("order_id") @db.Uuid
+  productId Int    @map("product_id")
+  /// CHECK quantity > 0 trong migration.
+  quantity  Int
+  /// Giá tại thời điểm đặt (VND), không đổi khi giá sản phẩm thay đổi.
+  unitPrice Int    @map("unit_price")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId])
+  @@map("order_items")
+}
