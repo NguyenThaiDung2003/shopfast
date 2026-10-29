@@ -8,10 +8,12 @@ export enum OtpPurpose {
 }
 
 export class SendOtpDto {
+  /** Email nhận mã. */
   @Transform(normalizeEmail)
   @IsEmail()
   email!: string;
 
+  /** Mục đích của mã OTP. */
   @IsEnum(OtpPurpose)
   purpose!: OtpPurpose;
 }

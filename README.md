@@ -103,8 +103,9 @@ Cơ chế chống bán vượt và chống tạo trùng đơn: [ADR-0005](docs/a
 | PATCH  | `/api/cart/items/:productId`              | CUSTOMER                           | `{ quantity }` – đặt lại số lượng                                                                                                                                        |
 | DELETE | `/api/cart/items/:productId`, `/api/cart` | CUSTOMER                           | Xoá một dòng / xoá hết                                                                                                                                                   |
 | POST   | `/api/orders`                             | CUSTOMER                           | Tạo đơn từ giỏ (201). Header `Idempotency-Key` tuỳ chọn: gửi lại cùng key → 200 + `Idempotent-Replayed: true`, cùng đơn. Thiếu hàng → 409 `OUT_OF_STOCK` nêu rõ sản phẩm |
-| GET    | `/api/orders`                             | CUSTOMER                           | Lịch sử đơn của mình (`page`, `limit` ≤ 50)                                                                                                                              |
-| GET    | `/api/orders/:id`                         | chủ đơn, SUPPORT, WAREHOUSE, ADMIN | Chi tiết đơn                                                                                                                                                             |
+| GET    | `/api/orders/me`                          | CUSTOMER                           | Lịch sử đơn của mình, mới nhất trước (`page`, `limit` ≤ 50)                                                                                                              |
+| GET    | `/api/orders/:id`                         | chủ đơn, SUPPORT, WAREHOUSE, ADMIN | Chi tiết đơn + `statusHistory` (chủ đơn không thấy tên nhân viên)                                                                                                        |
+| PATCH  | `/api/orders/:id/status`                  | WAREHOUSE, ADMIN                   | `{ status, note? }` theo state machine ([ADR-0006](docs/adr/0006-state-machine-don-hang.md)); sai bước → 409. Huỷ thì hoàn kho                                           |
 
 ```bash
 # Customer (TOKEN của customer01): thêm vào giỏ rồi đặt hàng, an toàn khi bấm hai lần
@@ -113,6 +114,15 @@ curl -X POST http://localhost:3000/api/cart/items -H "Authorization: Bearer $TOK
 KEY=$(node -e 'console.log(crypto.randomUUID())')
 curl -i -X POST http://localhost:3000/api/orders -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY"
 curl -i -X POST http://localhost:3000/api/orders -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY"  # 200, cùng đơn
+```
+
+#### Tài liệu API (Swagger)
+
+Mở **http://localhost:3000/docs** (JSON: `/docs-json`). Đăng nhập qua `POST /api/auth/login`, bấm **Authorize** và dán `accessToken` để gọi các endpoint có biểu tượng khoá. Tắt bằng `SWAGGER_ENABLED=false`.
+
+```bash
+# Warehouse chuyển trạng thái đơn (TOKEN của warehouse01, ORDER_ID lấy từ /api/orders/me của khách)
+curl -X PATCH http://localhost:3000/api/orders/$ORDER_ID/status -H "Authorization: Bearer $TOKEN"   -H "Content-Type: application/json" -d '{"status":"PAID","note":"Đã nhận chuyển khoản"}'
 ```
 
 #### Xác thực
@@ -172,10 +182,11 @@ docker compose down -v   # dừng và xoá volume (mất dữ liệu DB/Redis)
 
 ### Sự cố thường gặp
 
-| Hiện tượng                                           | Cách xử lý                                                                                                         |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `required variable POSTGRES_PASSWORD is missing`     | Chưa tạo `.env` hoặc thiếu biến – xem bước 2                                                                       |
-| `port is already allocated`                          | Cổng 3000/5432/6379 đang bận: đặt `API_HOST_PORT`, `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT` trong `.env`            |
-| Api ở trạng thái `unhealthy`/restart liên tục        | `docker compose logs api` – thường do sai biến môi trường (app dừng ngay khi validate thất bại) hoặc migration lỗi |
-| Đổi mật khẩu Postgres nhưng không đăng nhập được     | Postgres chỉ đọc mật khẩu ở lần khởi tạo volume đầu tiên: `docker compose down -v` rồi chạy lại                    |
-| `This version of pnpm requires at least Node.js v22` | Dùng pnpm 10 (xem bước 1)                                                                                          |
+| Hiện tượng                                                                               | Cách xử lý                                                                                                         |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `required variable POSTGRES_PASSWORD is missing`                                         | Chưa tạo `.env` hoặc thiếu biến – xem bước 2                                                                       |
+| `port is already allocated`                                                              | Cổng 3000/5432/6379 đang bận: đặt `API_HOST_PORT`, `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT` trong `.env`            |
+| Api ở trạng thái `unhealthy`/restart liên tục                                            | `docker compose logs api` – thường do sai biến môi trường (app dừng ngay khi validate thất bại) hoặc migration lỗi |
+| Đổi mật khẩu Postgres nhưng không đăng nhập được                                         | Postgres chỉ đọc mật khẩu ở lần khởi tạo volume đầu tiên: `docker compose down -v` rồi chạy lại                    |
+| `This version of pnpm requires at least Node.js v22`                                     | Dùng pnpm 10 (xem bước 1)                                                                                          |
+| Chạy api/test từ host trên Windows, request đồng thời chậm ~2 giây hoặc lỗi `ORDER_BUSY` | URL trong `.env` đang dùng `localhost` (phân giải ra `::1` trước, Docker chỉ bind IPv4) – đổi thành `127.0.0.1`    |

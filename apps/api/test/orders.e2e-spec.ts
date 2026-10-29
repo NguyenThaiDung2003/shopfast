@@ -332,7 +332,7 @@ describe('Cart & Orders (e2e)', () => {
     let orderId: string;
 
     beforeAll(async () => {
-      const { body } = await http.get('/api/orders').set(auth(users.alice.token)).expect(200);
+      const { body } = await http.get('/api/orders/me').set(auth(users.alice.token)).expect(200);
       orderId = body.items[0].id;
       expect(body.meta.total).toBeGreaterThanOrEqual(3);
     });

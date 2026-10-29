@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import type { CheckoutLine } from '../cart/cart.repository';
 
@@ -22,9 +22,40 @@ const orderDetailSelect = {
     },
     orderBy: { productId: 'asc' },
   },
+  statusHistory: {
+    select: {
+      fromStatus: true,
+      toStatus: true,
+      note: true,
+      createdAt: true,
+      changedBy: { select: { id: true, fullName: true, role: true } },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  },
 } satisfies Prisma.OrderSelect;
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderDetailSelect }>;
+
+export interface StatusChange {
+  orderId: string;
+  from: OrderStatus;
+  to: OrderStatus;
+  changedById: string;
+  note?: string;
+}
+
+export interface RestockedItem {
+  productId: number;
+  sku: string;
+  quantity: number;
+  stockAfter: number;
+}
+
+export type ChangeStatusResult =
+  | { status: 'updated'; order: OrderRecord; restocked: RestockedItem[] }
+  /** Trạng thái trong DB không còn là `from` – một request khác vừa đổi trước. */
+  | { status: 'conflict' }
+  | { status: 'busy' };
 
 export interface Shortage {
   productId: number;
@@ -45,12 +76,12 @@ export type CreateOrderResult =
 
 /** Ném trong transaction để rollback toàn bộ; bắt lại ngay bên ngoài. */
 class RollbackSignal extends Error {
-  constructor(readonly result: CreateOrderResult) {
+  constructor(readonly result: CreateOrderResult | ChangeStatusResult) {
     super(result.status);
   }
 }
 
-// Giữ transaction ngắn; maxWait cho phép chờ connection khi nhiều request cùng tranh một sản phẩm.
+// Giữ transaction ngắn; maxWait cho phép chờ connection khi nhiều request cùng tranh một dòng.
 const CHECKOUT_TX_OPTIONS = { maxWait: 5_000, timeout: 10_000 } as const;
 
 @Injectable()
@@ -78,6 +109,9 @@ export class OrdersRepository {
         const { id: orderId } = await tx.order.create({
           data: { userId, totalAmount: 0, idempotencyKey },
           select: { id: true },
+        });
+        await tx.orderStatusHistory.create({
+          data: { orderId, toStatus: OrderStatus.PENDING_PAYMENT, changedById: userId },
         });
 
         const short: CheckoutLine[] = [];
@@ -136,10 +170,63 @@ export class OrdersRepository {
         };
       }, CHECKOUT_TX_OPTIONS);
     } catch (error) {
-      if (error instanceof RollbackSignal) return error.result;
+      if (error instanceof RollbackSignal) return error.result as CreateOrderResult;
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002' && idempotencyKey) return { status: 'duplicate' };
         if (error.code === 'P2028') return { status: 'busy' };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Đổi trạng thái trong MỘT transaction (ADR-0006):
+   * 1. Compare-and-set `UPDATE … WHERE id = $id AND status = $from` – hai nhân viên bấm cùng lúc
+   *    thì chỉ một người thắng, người kia nhận 'conflict' (không ghi đè lên nhau).
+   * 2. Ghi lịch sử (ai, lúc nào, ghi chú).
+   * 3. Huỷ đơn → hoàn kho từng dòng theo productId tăng dần (cùng thứ tự khoá với checkout).
+   * Kiểm tra bước chuyển có hợp lệ hay không là việc của state machine ở service.
+   */
+  async changeStatus(change: StatusChange): Promise<ChangeStatusResult> {
+    const { orderId, from, to, changedById, note } = change;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { count } = await tx.order.updateMany({
+          where: { id: orderId, status: from },
+          data: { status: to, ...(to === OrderStatus.PAID && { paidAt: new Date() }) },
+        });
+        if (count !== 1) throw new RollbackSignal({ status: 'conflict' });
+
+        await tx.orderStatusHistory.create({
+          data: { orderId, fromStatus: from, toStatus: to, changedById, note },
+        });
+
+        const restocked: RestockedItem[] = [];
+        if (to === OrderStatus.CANCELLED) {
+          const items = await tx.orderItem.findMany({
+            where: { orderId },
+            select: { productId: true, quantity: true },
+            orderBy: { productId: 'asc' },
+          });
+          for (const item of items) {
+            const [row] = await tx.$queryRaw<Array<{ sku: string; stock: number }>>`
+              UPDATE products SET stock = stock + ${item.quantity}, updated_at = now()
+              WHERE id = ${item.productId}
+              RETURNING sku, stock`;
+            if (row) restocked.push({ ...item, sku: row.sku, stockAfter: row.stock });
+          }
+        }
+
+        const order = await tx.order.findUniqueOrThrow({
+          where: { id: orderId },
+          select: orderDetailSelect,
+        });
+        return { status: 'updated' as const, order, restocked };
+      }, CHECKOUT_TX_OPTIONS);
+    } catch (error) {
+      if (error instanceof RollbackSignal) return error.result as ChangeStatusResult;
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
+        return { status: 'busy' };
       }
       throw error;
     }

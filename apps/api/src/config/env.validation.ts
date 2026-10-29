@@ -12,6 +12,8 @@ export interface EnvironmentVariables {
   BCRYPT_ROUNDS: number;
   OTP_TTL_SECONDS: number;
   OTP_MAX_ATTEMPTS: number;
+  /** Bật tài liệu API tại /docs (F07: truy cập được trên môi trường thử nghiệm). */
+  SWAGGER_ENABLED: boolean;
 }
 
 // Ứng dụng dừng ngay khi khởi động nếu thiếu hoặc sai biến môi trường (fail-fast).
@@ -32,4 +34,5 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   BCRYPT_ROUNDS: Joi.number().integer().min(4).max(15).default(12),
   OTP_TTL_SECONDS: Joi.number().integer().min(30).max(3600).default(300),
   OTP_MAX_ATTEMPTS: Joi.number().integer().min(1).max(10).default(5),
+  SWAGGER_ENABLED: Joi.boolean().default(true),
 });

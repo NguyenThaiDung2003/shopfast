@@ -18,11 +18,12 @@ enum Role {
   ADMIN
 }
 
+/// Chuyển trạng thái hợp lệ: src/modules/orders/order-status.machine.ts (ADR-0006).
 enum OrderStatus {
   PENDING_PAYMENT
   PAID
   PROCESSING
-  SHIPPED
+  SHIPPING
   DELIVERED
   CANCELLED
 }
@@ -39,6 +40,7 @@ model User {
   orders        Order[]
   refreshTokens RefreshToken[]
   cartItems     CartItem[]
+  statusChanges OrderStatusHistory[]
 
   @@map("users")
 }
@@ -105,8 +107,9 @@ model Order {
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 
-  user  User        @relation(fields: [userId], references: [id])
-  items OrderItem[]
+  user          User                 @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
 
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
@@ -164,4 +167,22 @@ model CartItem {
   @@id([userId, productId])
   @@index([productId])
   @@map("cart_items")
+}
+
+/// Lịch sử chuyển trạng thái đơn – chỉ INSERT, không sửa/xoá (ADR-0006).
+model OrderStatusHistory {
+  id          Int          @id @default(autoincrement())
+  orderId     String       @map("order_id") @db.Uuid
+  /// null = lúc tạo đơn.
+  fromStatus  OrderStatus? @map("from_status")
+  toStatus    OrderStatus  @map("to_status")
+  changedById String       @map("changed_by_id") @db.Uuid
+  note        String?
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy User  @relation(fields: [changedById], references: [id])
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
 }

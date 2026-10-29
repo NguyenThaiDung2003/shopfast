@@ -5,18 +5,20 @@ export const normalizeEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 
 export class RegisterDto {
+  /** Email đăng nhập (không phân biệt hoa thường). */
   @Transform(normalizeEmail)
   @IsEmail()
   @MaxLength(254)
   email!: string;
 
-  // bcrypt chỉ dùng 72 byte đầu nên giới hạn độ dài.
+  /** Mật khẩu 8–72 ký tự, có cả chữ và số (bcrypt chỉ dùng 72 byte đầu). */
   @IsString()
   @MinLength(8)
   @MaxLength(72)
   @Matches(/^(?=.*[A-Za-z])(?=.*\d)/)
   password!: string;
 
+  /** Họ tên hiển thị (2–100 ký tự). */
   @IsString()
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @MinLength(2)
@@ -25,10 +27,12 @@ export class RegisterDto {
 }
 
 export class LoginDto {
+  /** Email đăng nhập (không phân biệt hoa thường). */
   @Transform(normalizeEmail)
   @IsEmail()
   email!: string;
 
+  /** Mật khẩu. */
   @IsString()
   @IsNotEmpty()
   @MaxLength(72)
@@ -36,6 +40,7 @@ export class LoginDto {
 }
 
 export class RefreshTokenDto {
+  /** Refresh token nhận được khi đăng nhập/refresh. */
   @IsString()
   @IsNotEmpty()
   @MaxLength(128)

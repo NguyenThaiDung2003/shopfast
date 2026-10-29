@@ -7,27 +7,14 @@ import type { AuthUser } from '../auth/auth.types';
 import { CartRepository } from '../cart/cart.repository';
 import { PRODUCT_UPDATED, ProductUpdatedEvent } from '../catalog/events/product-updated.event';
 import { ListOrdersQuery } from './dto/list-orders.query';
+import { OrderDto } from './dto/order.response';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { ORDER_CREATED, OrderCreatedEvent } from './events/order-created.event';
-import { OrderRecord, OrdersRepository, Shortage } from './orders.repository';
+import { ORDER_STATUS_CHANGED, OrderStatusChangedEvent } from './events/order-status-changed.event';
+import { assertTransition, ORDER_STATUS_LABELS } from './order-status.machine';
+import { OrderRecord, OrdersRepository, RestockedItem, Shortage } from './orders.repository';
 
-export interface OrderItemView {
-  productId: number;
-  sku: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
-}
-
-export interface OrderView {
-  id: string;
-  code: string;
-  status: OrderStatus;
-  totalAmount: number;
-  paidAt: Date | null;
-  createdAt: Date;
-  items: OrderItemView[];
-}
+export type OrderView = OrderDto;
 
 export interface CreateOrderOutcome {
   order: OrderView;
@@ -35,8 +22,14 @@ export interface CreateOrderOutcome {
   replayed: boolean;
 }
 
-export function toOrderView(order: OrderRecord): OrderView {
-  const { id, code, status, totalAmount, paidAt, createdAt, items } = order;
+const STAFF_ROLES: readonly Role[] = [Role.SUPPORT, Role.WAREHOUSE, Role.ADMIN];
+
+const isStaff = (user: AuthUser) => STAFF_ROLES.includes(user.role);
+
+/** Chủ đơn chỉ thấy vai trò của người đổi trạng thái; nhân viên thấy cả id và tên. */
+export function toOrderView(order: OrderRecord, viewer: AuthUser): OrderView {
+  const { id, code, status, totalAmount, paidAt, createdAt, items, statusHistory } = order;
+  const showStaff = isStaff(viewer);
   return {
     id,
     code,
@@ -52,6 +45,13 @@ export function toOrderView(order: OrderRecord): OrderView {
       unitPrice,
       lineTotal: unitPrice * quantity,
     })),
+    statusHistory: statusHistory.map(({ fromStatus, toStatus, note, createdAt, changedBy }) => ({
+      from: fromStatus,
+      to: toStatus,
+      note,
+      changedAt: createdAt,
+      changedBy: showStaff ? changedBy : { role: changedBy.role },
+    })),
   };
 }
 
@@ -65,8 +65,6 @@ export function formatShortages(shortages: Shortage[]): string {
   return `Không đủ hàng: ${parts.join('; ')}. Vui lòng cập nhật giỏ hàng.`;
 }
 
-const STAFF_ROLES: readonly Role[] = [Role.SUPPORT, Role.WAREHOUSE, Role.ADMIN];
-
 @Injectable()
 export class OrdersService {
   constructor(
@@ -76,14 +74,14 @@ export class OrdersService {
   ) {}
 
   async create(user: AuthUser, idempotencyKey?: string): Promise<CreateOrderOutcome> {
-    const replay = await this.findReplay(user.id, idempotencyKey);
+    const replay = await this.findReplay(user, idempotencyKey);
     if (replay) return replay;
 
     const lines = await this.cartRepository.findCheckoutLines(user.id);
     if (lines.length === 0) {
       // Request trùng key có thể đọc giỏ ngay sau khi request đầu commit và xoá giỏ:
       // tra lại key để trả đơn đó thay vì báo giỏ trống.
-      const lateReplay = await this.findReplay(user.id, idempotencyKey);
+      const lateReplay = await this.findReplay(user, idempotencyKey);
       if (lateReplay) return lateReplay;
       throw new AppException(
         HttpStatus.BAD_REQUEST,
@@ -96,7 +94,7 @@ export class OrdersService {
     switch (result.status) {
       case 'created':
         this.publishCreated(result.order, result.stockAfter, user);
-        return { order: toOrderView(result.order), replayed: false };
+        return { order: toOrderView(result.order, user), replayed: false };
 
       case 'insufficient_stock':
         throw new AppException(
@@ -108,7 +106,7 @@ export class OrdersService {
 
       case 'duplicate': {
         // Một request khác cùng key vừa tạo đơn (bấm hai lần gần như đồng thời).
-        const existing = await this.findReplay(user.id, idempotencyKey);
+        const existing = await this.findReplay(user, idempotencyKey);
         if (existing) return existing;
         throw new AppException(
           HttpStatus.CONFLICT,
@@ -140,25 +138,79 @@ export class OrdersService {
       (page - 1) * limit,
       limit,
     );
-    return toPage(items.map(toOrderView), total, page, limit);
+    return toPage(
+      items.map((o) => toOrderView(o, user)),
+      total,
+      page,
+      limit,
+    );
   }
 
   /** Chủ đơn hoặc nhân viên; customer khác nhận 404 để không lộ đơn có tồn tại hay không. */
   async findOne(user: AuthUser, orderId: string): Promise<OrderView> {
     const order = await this.ordersRepository.findById(orderId);
-    if (!order || (order.userId !== user.id && !STAFF_ROLES.includes(user.role))) {
-      throw new AppException(HttpStatus.NOT_FOUND, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng.');
+    if (!order || (order.userId !== user.id && !isStaff(user))) {
+      throw orderNotFound();
     }
-    return toOrderView(order);
+    return toOrderView(order, user);
+  }
+
+  /**
+   * Đổi trạng thái đơn theo state machine (ADR-0006). Bước không hợp lệ → 409;
+   * người khác vừa đổi trước (compare-and-set thua) → 409 kèm trạng thái hiện tại.
+   */
+  async changeStatus(
+    user: AuthUser,
+    orderId: string,
+    dto: UpdateOrderStatusDto,
+  ): Promise<OrderView> {
+    const current = await this.ordersRepository.findById(orderId);
+    if (!current) throw orderNotFound();
+    assertTransition(current.status, dto.status);
+
+    const result = await this.ordersRepository.changeStatus({
+      orderId,
+      from: current.status,
+      to: dto.status,
+      changedById: user.id,
+      note: dto.note,
+    });
+
+    if (result.status === 'busy') {
+      throw new AppException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'ORDER_BUSY',
+        'Hệ thống đang đông, vui lòng thử lại sau giây lát.',
+      );
+    }
+    if (result.status === 'conflict') {
+      const latest = await this.ordersRepository.findById(orderId);
+      const now = latest ? ORDER_STATUS_LABELS[latest.status] : 'không xác định';
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        'STATUS_CHANGED_CONCURRENTLY',
+        `Đơn vừa được người khác cập nhật (hiện: "${now}"). Vui lòng tải lại rồi thử lại.`,
+        { current: latest?.status ?? null },
+      );
+    }
+
+    this.publishStatusChanged(
+      result.order,
+      current.status,
+      user,
+      dto.note ?? null,
+      result.restocked,
+    );
+    return toOrderView(result.order, user);
   }
 
   private async findReplay(
-    userId: string,
+    user: AuthUser,
     idempotencyKey?: string,
   ): Promise<CreateOrderOutcome | null> {
     if (!idempotencyKey) return null;
-    const existing = await this.ordersRepository.findByIdempotencyKey(userId, idempotencyKey);
-    return existing ? { order: toOrderView(existing), replayed: true } : null;
+    const existing = await this.ordersRepository.findByIdempotencyKey(user.id, idempotencyKey);
+    return existing ? { order: toOrderView(existing, user), replayed: true } : null;
   }
 
   /** Chỉ gọi sau khi transaction đã commit (ADR-0004). */
@@ -196,4 +248,42 @@ export class OrdersService {
       );
     }
   }
+
+  /** Chỉ gọi sau khi transaction đã commit (ADR-0004). */
+  private publishStatusChanged(
+    order: OrderRecord,
+    from: OrderStatus,
+    user: AuthUser,
+    note: string | null,
+    restocked: RestockedItem[],
+  ): void {
+    this.eventEmitter.emit(
+      ORDER_STATUS_CHANGED,
+      new OrderStatusChangedEvent(
+        order.id,
+        order.code,
+        order.userId,
+        from,
+        order.status,
+        user,
+        note,
+      ),
+    );
+    // Huỷ đơn đã hoàn kho → cache/realtime tồn kho cần biết.
+    for (const item of restocked) {
+      this.eventEmitter.emit(
+        PRODUCT_UPDATED,
+        new ProductUpdatedEvent(
+          item.productId,
+          item.sku,
+          { stock: { from: item.stockAfter - item.quantity, to: item.stockAfter } },
+          user,
+        ),
+      );
+    }
+  }
+}
+
+function orderNotFound(): AppException {
+  return new AppException(HttpStatus.NOT_FOUND, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng.');
 }

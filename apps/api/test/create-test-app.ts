@@ -17,7 +17,9 @@ export class CapturingOtpSender implements OtpSender {
   }
 }
 
-export async function createTestApp(): Promise<{
+export async function createTestApp(
+  options: { beforeInit?: (app: INestApplication) => void } = {},
+): Promise<{
   app: INestApplication;
   otpSender: CapturingOtpSender;
 }> {
@@ -29,6 +31,7 @@ export async function createTestApp(): Promise<{
 
   const app = moduleRef.createNestApplication();
   configureApp(app);
+  options.beforeInit?.(app);
   await app.init();
   return { app, otpSender };
 }

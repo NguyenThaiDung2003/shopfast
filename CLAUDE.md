@@ -60,6 +60,17 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - `POST /orders` hỗ trợ `Idempotency-Key` (unique theo user, chèn đơn trước khi trừ kho). Endpoint ghi mới có rủi ro bấm trùng nên theo cùng cách.
 - Lỗi có dữ liệu cho client: `AppException(status, code, message, details)` → body có `details`.
 
+## Trạng thái đơn (ADR-0006)
+
+- Luật chuyển trạng thái **chỉ** nằm trong `ORDER_TRANSITIONS` (`modules/orders/order-status.machine.ts`); kiểm bằng `assertTransition` (409 tiếng Việt).
+- Mọi thay đổi `orders.status` (kể cả job F05) phải đi qua `OrdersService.changeStatus` → compare-and-set `WHERE status = :from`, ghi `order_status_history` (chỉ INSERT), hoàn kho khi huỷ, phát `order.status_changed` sau commit. Không `UPDATE orders SET status` trực tiếp.
+
+## Tài liệu API (Swagger)
+
+- UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.
+- DTO request/response đặt tên `*.dto.ts`, `*.query.ts`, `*.response.ts`; mỗi trường có JSDoc một dòng (thành `description`). Response trả ra ngoài phải là **class** (interface không có schema). Enum Prisma cần `@ApiProperty({ enum: X, enumName: 'X' })`.
+- Controller: `@ApiTags`, JSDoc trên handler (dòng đầu = summary), `@ApiBearerAuth('bearer')` cho endpoint cần đăng nhập, `@ApiErrorResponses(...)` (`common/swagger/`) cho lỗi chuẩn.
+
 ## Cấu hình & secret
 
 - **Cấm hardcode secret** (mật khẩu, khoá API, JWT secret, connection string) trong mã nguồn, Dockerfile, compose hay file pipeline.

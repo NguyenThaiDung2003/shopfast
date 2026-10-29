@@ -87,11 +87,28 @@ const ORDER_STATUS_POOL: OrderStatus[] = [
   OrderStatus.PENDING_PAYMENT,
   OrderStatus.PAID,
   OrderStatus.PROCESSING,
-  OrderStatus.SHIPPED,
+  OrderStatus.SHIPPING,
   OrderStatus.DELIVERED,
   OrderStatus.DELIVERED,
   OrderStatus.CANCELLED,
 ];
+
+// Đường đi tới mỗi trạng thái, khớp state machine (src/modules/orders/order-status.machine.ts).
+const MAIN_FLOW = [
+  OrderStatus.PENDING_PAYMENT,
+  OrderStatus.PAID,
+  OrderStatus.PROCESSING,
+  OrderStatus.SHIPPING,
+  OrderStatus.DELIVERED,
+];
+const STATUS_PATH: Record<OrderStatus, OrderStatus[]> = {
+  [OrderStatus.PENDING_PAYMENT]: MAIN_FLOW.slice(0, 1),
+  [OrderStatus.PAID]: MAIN_FLOW.slice(0, 2),
+  [OrderStatus.PROCESSING]: MAIN_FLOW.slice(0, 3),
+  [OrderStatus.SHIPPING]: MAIN_FLOW.slice(0, 4),
+  [OrderStatus.DELIVERED]: MAIN_FLOW,
+  [OrderStatus.CANCELLED]: [OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED],
+};
 
 const STAFF: Array<{ role: Role; count: number }> = [
   { role: Role.ADMIN, count: 1 },
@@ -150,7 +167,7 @@ async function main(): Promise<void> {
   try {
     await prisma.$transaction(
       async (tx) => {
-        await tx.$executeRaw`TRUNCATE TABLE cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
+        await tx.$executeRaw`TRUNCATE TABLE order_status_history, cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
 
         const categories = await tx.category.createManyAndReturn({
           data: CATEGORIES.map(({ name, slug }) => ({ name, slug })),
@@ -198,9 +215,12 @@ async function main(): Promise<void> {
         );
         const createdUsers = await tx.user.createManyAndReturn({ data: users });
         const customers = createdUsers.filter((u) => u.role === Role.CUSTOMER);
+        const admin = createdUsers.find((u) => u.role === Role.ADMIN)!;
+        const warehouse = createdUsers.find((u) => u.role === Role.WAREHOUSE)!;
 
         const orders: Prisma.OrderCreateManyInput[] = [];
         const orderItems: Prisma.OrderItemCreateManyInput[] = [];
+        const history: Prisma.OrderStatusHistoryCreateManyInput[] = [];
         const now = Date.now();
         for (let i = 0; i < ORDER_COUNT; i++) {
           const orderId = randomUUID();
@@ -220,19 +240,40 @@ async function main(): Promise<void> {
             orderItems.push({ orderId, productId: product.id, quantity, unitPrice: product.price });
           }
 
-          const isPaid = status !== OrderStatus.PENDING_PAYMENT && status !== OrderStatus.CANCELLED;
+          // Lịch sử đi đúng đường của state machine tới trạng thái hiện tại; mỗi bước sau bước trước.
+          const customerId = random.pick(customers).id;
+          let at = createdAt.getTime();
+          let paidAt: Date | null = null;
+          let from: OrderStatus | null = null;
+          for (const to of STATUS_PATH[status]) {
+            const actor =
+              from === null ? customerId : to === OrderStatus.PAID ? admin.id : warehouse.id;
+            if (from !== null) at = Math.min(at + random.int(10, 600) * 60_000, now - 60_000);
+            if (to === OrderStatus.PAID) paidAt = new Date(at);
+            history.push({
+              orderId,
+              fromStatus: from,
+              toStatus: to,
+              changedById: actor,
+              note: to === OrderStatus.CANCELLED ? 'Khách huỷ trước khi thanh toán' : null,
+              createdAt: new Date(at),
+            });
+            from = to;
+          }
+
           orders.push({
             id: orderId,
             code: `SF-${String(i + 1).padStart(6, '0')}`,
-            userId: random.pick(customers).id,
+            userId: customerId,
             status,
             totalAmount,
             createdAt,
-            paidAt: isPaid ? new Date(createdAt.getTime() + random.int(1, 30) * 60_000) : null,
+            paidAt,
           });
         }
         await tx.order.createMany({ data: orders });
         await tx.orderItem.createMany({ data: orderItems });
+        await tx.orderStatusHistory.createMany({ data: history });
         // Mã seed được gán tay SF-000001..; đơn tạo qua API tiếp nối từ SF-000051.
         await tx.$queryRaw`SELECT setval('order_code_seq', ${ORDER_COUNT})`;
       },

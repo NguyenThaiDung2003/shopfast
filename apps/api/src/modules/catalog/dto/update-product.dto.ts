@@ -9,18 +9,21 @@ const MAX_STOCK = 1_000_000;
  * không gửi cả hai cùng lúc.
  */
 export class UpdateProductDto {
+  /** Giá mới (VND). Chỉ ADMIN. */
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(MAX_PRICE)
   price?: number;
 
+  /** Đặt tồn kho tuyệt đối (kiểm kê). Không gửi kèm stockDelta. */
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(MAX_STOCK)
   stock?: number;
 
+  /** Cộng (+ nhập kho) hoặc trừ (− xuất kho) tồn kho; khác 0. */
   @IsOptional()
   @IsInt()
   @NotEquals(0)

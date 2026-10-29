@@ -1,14 +1,18 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { PublicUser } from '../users/users.repository';
+import { ApiBearerAuth, ApiNoContentResponse, ApiTags } from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/swagger/api-error-responses.decorator';
+import { UserDto } from '../users/dto/user.response';
 import { AuthService } from './auth.service';
-import type { AuthResult, AuthTokens, AuthUser, ClientContext } from './auth.types';
+import type { AuthUser, ClientContext } from './auth.types';
 import { ClientInfo, CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
+import { AuthResultDto, AuthTokensDto, OtpSentDto, OtpVerifiedDto } from './dto/auth.response';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { OtpService } from './otp.service';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -16,58 +20,80 @@ export class AuthController {
     private readonly otpService: OtpService,
   ) {}
 
+  /** Đăng ký tài khoản khách hàng (luôn là CUSTOMER) */
   @Public()
   @Post('register')
-  register(@Body() dto: RegisterDto, @ClientInfo() client: ClientContext): Promise<AuthResult> {
+  @ApiErrorResponses(400, 409)
+  register(@Body() dto: RegisterDto, @ClientInfo() client: ClientContext): Promise<AuthResultDto> {
     return this.authService.register(dto, client);
   }
 
+  /** Đăng nhập, nhận access token (15 phút) và refresh token (7 ngày) */
   // F03 sẽ gắn rate limit chặt hơn cho endpoint này.
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto, @ClientInfo() client: ClientContext): Promise<AuthResult> {
+  @ApiErrorResponses(400, 401)
+  login(@Body() dto: LoginDto, @ClientInfo() client: ClientContext): Promise<AuthResultDto> {
     return this.authService.login(dto, client);
   }
 
+  /** Đổi refresh token lấy cặp token mới (token cũ bị thu hồi) */
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() dto: RefreshTokenDto, @ClientInfo() client: ClientContext): Promise<AuthTokens> {
+  @ApiErrorResponses(400, 401)
+  refresh(
+    @Body() dto: RefreshTokenDto,
+    @ClientInfo() client: ClientContext,
+  ): Promise<AuthTokensDto> {
     return this.authService.refresh(dto.refreshToken, client);
   }
 
+  /** Đăng xuất thiết bị hiện tại (thu hồi phiên của refresh token) */
   // Public để vẫn đăng xuất được khi access token đã hết hạn.
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse()
   logout(@Body() dto: RefreshTokenDto): Promise<void> {
     return this.authService.logout(dto.refreshToken);
   }
 
+  /** Đăng xuất mọi thiết bị */
   @Post('logout-all')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('bearer')
+  @ApiNoContentResponse()
+  @ApiErrorResponses(401)
   logoutAll(@CurrentUser() user: AuthUser): Promise<void> {
     return this.authService.logoutAll(user.id);
   }
 
+  /** Thông tin tài khoản hiện tại */
   @Get('me')
-  me(@CurrentUser() user: AuthUser): Promise<PublicUser> {
+  @ApiBearerAuth('bearer')
+  @ApiErrorResponses(401)
+  me(@CurrentUser() user: AuthUser): Promise<UserDto> {
     return this.authService.me(user.id);
   }
 
+  /** Gửi mã OTP (giả lập – mã in ra log api ở môi trường dev) */
   // F03 sẽ gắn rate limit chặt hơn cho endpoint này.
   @Public()
   @Post('otp/send')
   @HttpCode(HttpStatus.ACCEPTED)
-  sendOtp(@Body() dto: SendOtpDto): Promise<{ expiresInSeconds: number }> {
+  @ApiErrorResponses(400, 503)
+  sendOtp(@Body() dto: SendOtpDto): Promise<OtpSentDto> {
     return this.otpService.send(dto);
   }
 
+  /** Xác thực mã OTP (dùng một lần, tối đa 5 lần nhập sai) */
   @Public()
   @Post('otp/verify')
   @HttpCode(HttpStatus.OK)
-  verifyOtp(@Body() dto: VerifyOtpDto): Promise<{ verified: true }> {
+  @ApiErrorResponses(400, 429, 503)
+  verifyOtp(@Body() dto: VerifyOtpDto): Promise<OtpVerifiedDto> {
     return this.otpService.verify(dto);
   }
 }

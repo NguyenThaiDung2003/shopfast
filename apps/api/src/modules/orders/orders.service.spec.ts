@@ -4,12 +4,14 @@ import type { AuthUser } from '../auth/auth.types';
 import { CartRepository } from '../cart/cart.repository';
 import { PRODUCT_UPDATED } from '../catalog/events/product-updated.event';
 import { ORDER_CREATED, OrderCreatedEvent } from './events/order-created.event';
+import { ORDER_STATUS_CHANGED, OrderStatusChangedEvent } from './events/order-status-changed.event';
 import { IdempotencyKeyPipe } from './idempotency-key.pipe';
 import { OrderRecord, OrdersRepository } from './orders.repository';
-import { formatShortages, OrdersService } from './orders.service';
+import { formatShortages, OrdersService, toOrderView } from './orders.service';
 import { ListOrdersQuery } from './dto/list-orders.query';
 
 const customer: AuthUser = { id: 'cust-1', role: Role.CUSTOMER };
+const warehouse: AuthUser = { id: 'wh-1', role: Role.WAREHOUSE };
 const KEY = 'key-12345678';
 
 const order: OrderRecord = {
@@ -24,13 +26,43 @@ const order: OrderRecord = {
     { productId: 1, quantity: 2, unitPrice: 200_000, product: { sku: 'A', name: 'Chuột' } },
     { productId: 2, quantity: 1, unitPrice: 50_000, product: { sku: 'B', name: 'Cáp' } },
   ],
+  statusHistory: [
+    {
+      fromStatus: null,
+      toStatus: OrderStatus.PENDING_PAYMENT,
+      note: null,
+      createdAt: new Date('2026-10-29T10:00:00Z'),
+      changedBy: { id: customer.id, fullName: 'Khách A', role: Role.CUSTOMER },
+    },
+  ],
 };
+
+/** Đơn ở trạng thái `status`, lịch sử có thêm một bước do warehouse thực hiện. */
+function orderIn(
+  status: OrderStatus,
+  from: OrderStatus = OrderStatus.PENDING_PAYMENT,
+): OrderRecord {
+  return {
+    ...order,
+    status,
+    statusHistory: [
+      ...order.statusHistory,
+      {
+        fromStatus: from,
+        toStatus: status,
+        note: 'ghi chú',
+        createdAt: new Date('2026-10-29T11:00:00Z'),
+        changedBy: { id: warehouse.id, fullName: 'Kho B', role: Role.WAREHOUSE },
+      },
+    ],
+  };
+}
 
 describe('OrdersService', () => {
   let orders: jest.Mocked<
     Pick<
       OrdersRepository,
-      'createFromCart' | 'findByIdempotencyKey' | 'findById' | 'findPageByUser'
+      'createFromCart' | 'findByIdempotencyKey' | 'findById' | 'findPageByUser' | 'changeStatus'
     >
   >;
   let cart: jest.Mocked<Pick<CartRepository, 'findCheckoutLines'>>;
@@ -50,6 +82,7 @@ describe('OrdersService', () => {
       findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
       findPageByUser: jest.fn(),
+      changeStatus: jest.fn(),
     };
     cart = {
       findCheckoutLines: jest.fn().mockResolvedValue([
@@ -184,6 +217,134 @@ describe('OrdersService', () => {
       orders.createFromCart.mockResolvedValue({ status: 'total_overflow' });
 
       await expect(service.create(customer)).rejects.toMatchObject({ code: 'ORDER_TOO_LARGE' });
+    });
+  });
+
+  describe('changeStatus', () => {
+    it('bước hợp lệ → compare-and-set với đúng from/to, phát order.status_changed', async () => {
+      orders.findById.mockResolvedValue(order);
+      orders.changeStatus.mockResolvedValue({
+        status: 'updated',
+        order: orderIn(OrderStatus.PAID),
+        restocked: [],
+      });
+
+      const view = await service.changeStatus(warehouse, order.id, {
+        status: OrderStatus.PAID,
+        note: 'Đã nhận chuyển khoản',
+      });
+
+      expect(orders.changeStatus).toHaveBeenCalledWith({
+        orderId: order.id,
+        from: OrderStatus.PENDING_PAYMENT,
+        to: OrderStatus.PAID,
+        changedById: warehouse.id,
+        note: 'Đã nhận chuyển khoản',
+      });
+      expect(view.status).toBe(OrderStatus.PAID);
+      expect(emitter.emit).toHaveBeenCalledTimes(1);
+      const [name, event] = emitter.emit.mock.calls[0]!;
+      expect(name).toBe(ORDER_STATUS_CHANGED);
+      expect(event).toBeInstanceOf(OrderStatusChangedEvent);
+      expect(event).toMatchObject({
+        orderId: order.id,
+        code: 'SF-000051',
+        userId: customer.id,
+        from: OrderStatus.PENDING_PAYMENT,
+        to: OrderStatus.PAID,
+        changedBy: warehouse,
+        note: 'Đã nhận chuyển khoản',
+      });
+    });
+
+    it('bước không hợp lệ → 409 INVALID_STATUS_TRANSITION, không chạm DB, không phát event', async () => {
+      orders.findById.mockResolvedValue(order);
+
+      await expect(
+        service.changeStatus(warehouse, order.id, { status: OrderStatus.SHIPPING }),
+      ).rejects.toMatchObject({ code: 'INVALID_STATUS_TRANSITION', status: 409 });
+      expect(orders.changeStatus).not.toHaveBeenCalled();
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('đơn không tồn tại → 404', async () => {
+      orders.findById.mockResolvedValue(null);
+
+      await expect(
+        service.changeStatus(warehouse, order.id, { status: OrderStatus.PAID }),
+      ).rejects.toMatchObject({ code: 'ORDER_NOT_FOUND' });
+    });
+
+    it('người khác vừa đổi trước → 409 STATUS_CHANGED_CONCURRENTLY nêu trạng thái hiện tại', async () => {
+      orders.findById
+        .mockResolvedValueOnce(orderIn(OrderStatus.PAID))
+        .mockResolvedValueOnce(orderIn(OrderStatus.PROCESSING, OrderStatus.PAID));
+      orders.changeStatus.mockResolvedValue({ status: 'conflict' });
+
+      await expect(
+        service.changeStatus(warehouse, order.id, { status: OrderStatus.PROCESSING }),
+      ).rejects.toMatchObject({
+        code: 'STATUS_CHANGED_CONCURRENTLY',
+        status: 409,
+        userMessage:
+          'Đơn vừa được người khác cập nhật (hiện: "Đang xử lý"). Vui lòng tải lại rồi thử lại.',
+        details: { current: OrderStatus.PROCESSING },
+      });
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('quá tải → 503 ORDER_BUSY', async () => {
+      orders.findById.mockResolvedValue(order);
+      orders.changeStatus.mockResolvedValue({ status: 'busy' });
+
+      await expect(
+        service.changeStatus(warehouse, order.id, { status: OrderStatus.PAID }),
+      ).rejects.toMatchObject({ code: 'ORDER_BUSY', status: 503 });
+    });
+
+    it('huỷ đơn → phát product.updated cho từng sản phẩm được hoàn kho', async () => {
+      orders.findById.mockResolvedValue(orderIn(OrderStatus.PROCESSING, OrderStatus.PAID));
+      orders.changeStatus.mockResolvedValue({
+        status: 'updated',
+        order: orderIn(OrderStatus.CANCELLED, OrderStatus.PROCESSING),
+        restocked: [
+          { productId: 1, sku: 'A', quantity: 2, stockAfter: 10 },
+          { productId: 2, sku: 'B', quantity: 1, stockAfter: 50 },
+        ],
+      });
+
+      await service.changeStatus(warehouse, order.id, { status: OrderStatus.CANCELLED });
+
+      const names = emitter.emit.mock.calls.map(([n]) => n);
+      expect(names).toEqual([ORDER_STATUS_CHANGED, PRODUCT_UPDATED, PRODUCT_UPDATED]);
+      expect(emitter.emit.mock.calls.slice(1).map(([, e]) => e.changes)).toEqual([
+        { stock: { from: 8, to: 10 } },
+        { stock: { from: 49, to: 50 } },
+      ]);
+    });
+  });
+
+  describe('toOrderView – lịch sử trạng thái', () => {
+    const record = orderIn(OrderStatus.PAID);
+
+    it('nhân viên thấy id và tên người đổi', () => {
+      expect(toOrderView(record, warehouse).statusHistory[1]).toEqual({
+        from: OrderStatus.PENDING_PAYMENT,
+        to: OrderStatus.PAID,
+        note: 'ghi chú',
+        changedAt: new Date('2026-10-29T11:00:00Z'),
+        changedBy: { id: warehouse.id, fullName: 'Kho B', role: Role.WAREHOUSE },
+      });
+    });
+
+    it('chủ đơn chỉ thấy vai trò của người đổi', () => {
+      const history = toOrderView(record, customer).statusHistory;
+
+      expect(history.map((h) => h.changedBy)).toEqual([
+        { role: Role.CUSTOMER },
+        { role: Role.WAREHOUSE },
+      ]);
+      expect(history[0]).toMatchObject({ from: null, to: OrderStatus.PENDING_PAYMENT });
     });
   });
 
