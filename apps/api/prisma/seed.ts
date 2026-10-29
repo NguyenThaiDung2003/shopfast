@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { OrderStatus, Prisma, PrismaClient, Role } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { clearCatalogCache } from './clear-cache';
 
 const PRODUCT_COUNT = 200;
 const ORDER_COUNT = 50;
@@ -298,6 +299,8 @@ async function main(): Promise<void> {
   } finally {
     await prisma.$disconnect();
   }
+  // Dữ liệu tạo lại (id bắt đầu lại từ 1) không đi qua product.updated → cache cũ sai hoàn toàn.
+  await clearCatalogCache(process.env.REDIS_URL);
 }
 
 main().catch((error: unknown) => {

@@ -33,12 +33,13 @@ Nếu `CatalogService` gọi thẳng từng service đó, module catalog sẽ ph
 - **Chỉ phát sau khi DB đã commit**. `CatalogRepository.applyPatch` là một câu `UPDATE` nguyên tử, nên khi service phát event thì dữ liệu đã bền. Không phát khi thao tác thất bại hoặc khi không có trường nào thực sự đổi.
 - Payload chứa giá trị cũ và mới (`changes.price.from/to`, `changes.stock.from/to`), người thực hiện và thời điểm, để listener không phải đọc lại DB.
 - Listener đăng ký `@OnEvent(PRODUCT_UPDATED, { async: true, suppressErrors: true })` và tự bắt lỗi. Lỗi ở listener không làm hỏng request cập nhật.
+  - **Ngoại lệ:** listener làm mất hiệu lực cache (`CatalogCacheListener`, ADR-0007) chạy **đồng bộ** (không `async: true`) để lệnh Redis được gửi trước khi response trả về. Listener này không bao giờ ném lỗi và không chờ kết quả Redis.
 
 ### Danh sách event
 
 | Event                  | Phát từ                                                                                                                                                            | Payload                                                                                             | Listener dự kiến                                                                                         |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `product.updated`      | `CatalogService.update` (sửa giá/tồn kho), `OrdersService.create` (trừ kho khi đặt hàng), `OrdersService.changeStatus` (hoàn kho khi huỷ) – mỗi sản phẩm một event | `productId`, `sku`, `changes.price/stock {from,to}`, `updatedBy`, `occurredAt`                      | Làm mới cache sản phẩm (F04), realtime tồn kho (F02)                                                     |
+| `product.updated`      | `CatalogService.update` (sửa giá/tồn kho), `OrdersService.create` (trừ kho khi đặt hàng), `OrdersService.changeStatus` (hoàn kho khi huỷ) – mỗi sản phẩm một event | `productId`, `sku`, `changes.price/stock {from,to}`, `updatedBy`, `occurredAt`                      | `CatalogCacheListener` – xoá cache (F04, đã có); realtime tồn kho (F02)                                  |
 | `order.created`        | `OrdersService.create` sau khi transaction đặt hàng commit (ADR-0005)                                                                                              | `orderId`, `code`, `userId`, `totalAmount`, `items[{productId, quantity, unitPrice}]`, `occurredAt` | Email xác nhận, xuất hoá đơn, đồng bộ kho đối tác, hẹn nhắc thanh toán sau 30 phút (F05 – đẩy vào queue) |
 | `order.status_changed` | `OrdersService.changeStatus` sau khi transaction đổi trạng thái commit (ADR-0006)                                                                                  | `orderId`, `code`, `userId` (chủ đơn), `from`, `to`, `changedBy`, `note`, `occurredAt`              | Realtime theo dõi đơn (F02), email/thông báo, huỷ nhắc thanh toán khi đơn đã PAID/CANCELLED (F05)        |
 
@@ -56,6 +57,6 @@ Khi trả lại đơn cũ theo Idempotency-Key (replay): **không phát event l�
 ## Xử lý khi sự cố
 
 - **Listener ném lỗi:** `suppressErrors` cùng try/catch trong listener ghi log lỗi; request PATCH vẫn trả 200 vì dữ liệu đã lưu đúng. Cache cũ tự hết hạn theo TTL.
-- **Khách thấy giá cũ sau khi admin đổi giá:** kiểm tra log listener cache invalidation; xoá thủ công key cache của sản phẩm. Tạm thời có thể hạ TTL.
+- **Khách thấy giá cũ sau khi admin đổi giá:** tìm `Cache invalidation failed` trong log, rồi `INCR` version cache của sản phẩm (ADR-0007, mục Xử lý khi sự cố). Tạm thời có thể hạ TTL hoặc đặt `CACHE_ENABLED=false`.
 - **Mất event do restart giữa chừng:** dữ liệu trong DB vẫn đúng. Client realtime sẽ nhận trạng thái đúng ở lần tải lại hoặc kết nối lại (F02 đăng ký lại kênh), cache hết hạn theo TTL.
 - **Bão event** (cập nhật hàng loạt tồn kho): listener cache gom (debounce) theo `productId`; nhập hàng loạt về sau nên có endpoint batch phát một event tổng hợp.

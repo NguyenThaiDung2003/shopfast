@@ -14,6 +14,14 @@ export interface EnvironmentVariables {
   OTP_MAX_ATTEMPTS: number;
   /** Bật tài liệu API tại /docs (F07: truy cập được trên môi trường thử nghiệm). */
   SWAGGER_ENABLED: boolean;
+  /** Timeout mỗi lệnh Redis (ms); quá hạn → lỗi ngay, nơi gọi tự suy giảm. */
+  REDIS_COMMAND_TIMEOUT_MS: number;
+  /** Bật cache catalog (F04, ADR-0007). */
+  CACHE_ENABLED: boolean;
+  CACHE_PRODUCT_TTL_SECONDS: number;
+  CACHE_LIST_TTL_SECONDS: number;
+  /** TTL cho kết quả "không tồn tại" (chống dò id). */
+  CACHE_NEGATIVE_TTL_SECONDS: number;
 }
 
 // Ứng dụng dừng ngay khi khởi động nếu thiếu hoặc sai biến môi trường (fail-fast).
@@ -35,4 +43,9 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   OTP_TTL_SECONDS: Joi.number().integer().min(30).max(3600).default(300),
   OTP_MAX_ATTEMPTS: Joi.number().integer().min(1).max(10).default(5),
   SWAGGER_ENABLED: Joi.boolean().default(true),
+  REDIS_COMMAND_TIMEOUT_MS: Joi.number().integer().min(10).max(10_000).default(100),
+  CACHE_ENABLED: Joi.boolean().default(true),
+  CACHE_PRODUCT_TTL_SECONDS: Joi.number().integer().min(1).max(86_400).default(300),
+  CACHE_LIST_TTL_SECONDS: Joi.number().integer().min(1).max(86_400).default(60),
+  CACHE_NEGATIVE_TTL_SECONDS: Joi.number().integer().min(1).max(3600).default(30),
 });

@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { AppException } from '../../common/exceptions/app.exception';
 import { Page, toPage } from '../../common/pagination';
 import type { AuthUser } from '../auth/auth.types';
+import { CatalogCacheService } from './catalog-cache.service';
 import {
   CatalogRepository,
   PriceStock,
@@ -26,6 +27,7 @@ const PRICE_EDITOR_ROLES: readonly Role[] = [Role.ADMIN];
 export class CatalogService {
   constructor(
     private readonly catalogRepository: CatalogRepository,
+    private readonly catalogCache: CatalogCacheService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -40,17 +42,20 @@ export class CatalogService {
       );
     }
 
-    const { items, total } = await this.catalogRepository.findPage(
-      { categoryId, brandId, minPrice, maxPrice },
-      sort,
-      (page - 1) * limit,
-      limit,
-    );
-    return toPage(items, total, page, limit);
+    return this.catalogCache.list(query, async () => {
+      const { items, total } = await this.catalogRepository.findPage(
+        { categoryId, brandId, minPrice, maxPrice },
+        sort,
+        (page - 1) * limit,
+        limit,
+      );
+      return toPage(items, total, page, limit);
+    });
   }
 
   async findOne(id: number): Promise<ProductDetail> {
-    const product = await this.catalogRepository.findById(id);
+    // Id không tồn tại cũng được cache (TTL ngắn) → dò id ngẫu nhiên không đập vào DB.
+    const product = await this.catalogCache.product(id, () => this.catalogRepository.findById(id));
     if (!product) throw productNotFound();
     return product;
   }
@@ -77,7 +82,10 @@ export class CatalogService {
         new ProductUpdatedEvent(id, result.sku, changes, actor),
       );
     }
-    return this.findOne(id);
+    // Đọc thẳng DB: người vừa sửa luôn thấy giá trị mới nhất, không phụ thuộc cache.
+    const product = await this.catalogRepository.findById(id);
+    if (!product) throw productNotFound();
+    return product;
   }
 
   private assertValidUpdate(dto: UpdateProductDto, actor: AuthUser): void {

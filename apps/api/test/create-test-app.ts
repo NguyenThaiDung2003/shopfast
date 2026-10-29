@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { OTP_SENDER, OtpMessage, OtpSender } from '../src/modules/auth/otp-sender';
@@ -18,16 +18,20 @@ export class CapturingOtpSender implements OtpSender {
 }
 
 export async function createTestApp(
-  options: { beforeInit?: (app: INestApplication) => void } = {},
+  options: {
+    beforeInit?: (app: INestApplication) => void;
+    /** Thay provider thật, ví dụ trỏ REDIS_CLIENT vào Redis "chết". */
+    override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
+  } = {},
 ): Promise<{
   app: INestApplication;
   otpSender: CapturingOtpSender;
 }> {
   const otpSender = new CapturingOtpSender();
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  const builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(OTP_SENDER)
-    .useValue(otpSender)
-    .compile();
+    .useValue(otpSender);
+  const moduleRef = await (options.override?.(builder) ?? builder).compile();
 
   const app = moduleRef.createNestApplication();
   configureApp(app);

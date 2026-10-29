@@ -20,6 +20,9 @@ import { REDIS_CLIENT } from './redis.constants';
           lazyConnect: true,
           enableOfflineQueue: false,
           maxRetriesPerRequest: 1,
+          // Lệnh treo (Redis quá tải/mạng chập chờn) không được kéo dài request: quá hạn → lỗi.
+          commandTimeout: config.get('REDIS_COMMAND_TIMEOUT_MS', { infer: true }),
+          connectTimeout: 2_000,
           retryStrategy: (attempt) => Math.min(attempt * 500, 5_000),
         });
         client.on('error', (error: Error) => logger.warn(`Redis error: ${error.message}`));

@@ -2,6 +2,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Role } from '@prisma/client';
 import { AppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../auth/auth.types';
+import { CatalogCacheService } from './catalog-cache.service';
 import { ProductSort } from './catalog.query';
 import {
   CatalogRepository,
@@ -36,6 +37,7 @@ function query(overrides: Partial<ListProductsQuery> = {}): ListProductsQuery {
 describe('CatalogService', () => {
   let repository: jest.Mocked<Pick<CatalogRepository, 'findPage' | 'findById' | 'applyPatch'>>;
   let emitter: { emit: jest.Mock };
+  let cache: { list: jest.Mock; product: jest.Mock };
   let service: CatalogService;
 
   /** Giả lập applyPatch: áp patch lên tồn kho hiện tại như câu UPDATE thật. */
@@ -56,8 +58,14 @@ describe('CatalogService', () => {
       applyPatch: jest.fn(),
     };
     emitter = { emit: jest.fn() };
+    // Mặc định cache luôn trượt: gọi thẳng loader (logic cache test ở cache.service.spec.ts).
+    cache = {
+      list: jest.fn((_query: unknown, load: () => Promise<unknown>) => load()),
+      product: jest.fn((_id: unknown, load: () => Promise<unknown>) => load()),
+    };
     service = new CatalogService(
       repository as unknown as CatalogRepository,
+      cache as unknown as CatalogCacheService,
       emitter as unknown as EventEmitter2,
     );
   });
@@ -140,6 +148,17 @@ describe('CatalogService', () => {
       await expect(promise).rejects.toBeInstanceOf(AppException);
       await expect(promise).rejects.toMatchObject({ code: 'INVALID_PRICE_RANGE' });
       expect(repository.findPage).not.toHaveBeenCalled();
+      expect(cache.list).not.toHaveBeenCalled();
+    });
+
+    it('đi qua cache với đúng query; trúng cache thì không truy vấn DB', async () => {
+      const cached = { items: [listItem], meta: { page: 1, limit: 20, total: 1, totalPages: 1 } };
+      cache.list.mockResolvedValue(cached);
+      const q = query({ categoryId: 1 });
+
+      await expect(service.list(q)).resolves.toBe(cached);
+      expect(cache.list).toHaveBeenCalledWith(q, expect.any(Function));
+      expect(repository.findPage).not.toHaveBeenCalled();
     });
   });
 
@@ -154,6 +173,21 @@ describe('CatalogService', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(service.findOne(999)).rejects.toMatchObject({ code: 'PRODUCT_NOT_FOUND' });
+    });
+
+    it('trúng cache → không truy vấn DB', async () => {
+      cache.product.mockResolvedValue(detail);
+
+      await expect(service.findOne(1)).resolves.toBe(detail);
+      expect(cache.product).toHaveBeenCalledWith(1, expect.any(Function));
+      expect(repository.findById).not.toHaveBeenCalled();
+    });
+
+    it('cache giữ "không tồn tại" → vẫn 404, không truy vấn DB', async () => {
+      cache.product.mockResolvedValue(null);
+
+      await expect(service.findOne(999)).rejects.toMatchObject({ code: 'PRODUCT_NOT_FOUND' });
+      expect(repository.findById).not.toHaveBeenCalled();
     });
   });
 
@@ -180,6 +214,8 @@ describe('CatalogService', () => {
         updatedBy: admin,
       });
       expect(event.changes.stock).toBeUndefined();
+      // Response PATCH đọc thẳng DB, không qua cache.
+      expect(cache.product).not.toHaveBeenCalled();
     });
 
     it('warehouse nhập thêm hàng bằng stockDelta', async () => {

@@ -49,7 +49,7 @@ docker compose logs -f api # xem log; lúc khởi động api tự chạy `prism
 docker compose exec api npx prisma db seed
 ```
 
-Seed tạo 5 danh mục, 10 thương hiệu, 200 sản phẩm, 25 tài khoản và 50 đơn hàng ở đủ 6 trạng thái. Chạy lại bao nhiêu lần cũng ra cùng một bộ dữ liệu (xoá sạch rồi tạo lại, id bắt đầu từ 1). Seed từ chối chạy khi `NODE_ENV=production`.
+Seed tạo 5 danh mục, 10 thương hiệu, 200 sản phẩm, 25 tài khoản và 50 đơn hàng ở đủ 6 trạng thái. Chạy lại bao nhiêu lần cũng ra cùng một bộ dữ liệu (xoá sạch rồi tạo lại, id bắt đầu từ 1). Seed từ chối chạy khi `NODE_ENV=production`. Cuối seed tự xoá cache catalog (`cache:*` trong Redis) vì dữ liệu cũ không còn đúng.
 
 Tài khoản mẫu (mật khẩu chung = `SEED_USER_PASSWORD` trong `.env`):
 
@@ -90,6 +90,26 @@ Danh mục: `1` Điện thoại, `2` Laptop, `3` Phụ kiện, `4` Âm thanh, `5
 # Warehouse nhập thêm 20 sản phẩm (TOKEN lấy như phần Xác thực, đăng nhập warehouse01)
 curl -X PATCH http://localhost:3000/api/products/1 -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -d '{"stockDelta":20}'
+```
+
+#### Cache catalog
+
+`GET /api/products` và `GET /api/products/:id` được cache trong Redis theo kiểu cache-aside ([ADR-0007](docs/adr/0007-cache-catalog-redis.md)). Đổi giá/tồn kho (PATCH, đặt đơn, huỷ đơn) làm mất hiệu lực ngay, nên khách không thấy giá cũ. Redis lỗi thì API tự đọc DB và vẫn trả 200.
+
+| Method | Endpoint                 | Quyền | Mô tả                                                                         |
+| ------ | ------------------------ | ----- | ----------------------------------------------------------------------------- |
+| GET    | `/api/admin/cache/stats` | ADMIN | Số lần trúng/trượt và `hitRate` theo nhóm (`product`, `product_list`) và tổng |
+| DELETE | `/api/admin/cache/stats` | ADMIN | Đặt lại bộ đếm (204)                                                          |
+
+Cấu hình (đều có mặc định): `CACHE_ENABLED`, `CACHE_PRODUCT_TTL_SECONDS` (300), `CACHE_LIST_TTL_SECONDS` (60), `CACHE_NEGATIVE_TTL_SECONDS` (30), `REDIS_COMMAND_TIMEOUT_MS` (100).
+
+Đo thời gian phản hồi (cần stack Docker đang chạy và đã seed). Kết quả được ghi vào [docs/perf/cache-benchmark.md](docs/perf/cache-benchmark.md):
+
+```bash
+pnpm --filter @shopfast/api bench:cache
+# Cột đối chứng khi tắt cache:
+CACHE_ENABLED=false docker compose up -d api && pnpm --filter @shopfast/api bench:cache
+docker compose up -d api   # bật lại
 ```
 
 #### Giỏ hàng & đơn hàng

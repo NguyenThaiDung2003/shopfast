@@ -28,8 +28,8 @@ export default tseslint.config(
     },
   },
   {
-    // Script CLI (seed) được phép in ra console.
-    files: ['apps/api/prisma/**/*.ts'],
+    // Script CLI (seed, đo hiệu năng) được phép in ra console.
+    files: ['apps/api/prisma/**/*.ts', 'apps/api/scripts/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
   {

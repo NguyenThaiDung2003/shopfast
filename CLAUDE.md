@@ -65,6 +65,13 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Luật chuyển trạng thái **chỉ** nằm trong `ORDER_TRANSITIONS` (`modules/orders/order-status.machine.ts`); kiểm bằng `assertTransition` (409 tiếng Việt).
 - Mọi thay đổi `orders.status` (kể cả job F05) phải đi qua `OrdersService.changeStatus` → compare-and-set `WHERE status = :from`, ghi `order_status_history` (chỉ INSERT), hoàn kho khi huỷ, phát `order.status_changed` sau commit. Không `UPDATE orders SET status` trực tiếp.
 
+## Cache (ADR-0007)
+
+- Đọc catalog qua `CatalogCacheService` → `CacheService.getOrLoad` (`modules/cache/`): cache-aside, khoá có version, lock `SET NX PX`, TTL jitter, cache giá trị rỗng. Cache mới dùng lại `CacheService`, không gọi Redis trực tiếp.
+- **Mọi thay đổi giá/tồn kho phải phát `product.updated`**, nếu không cache sẽ cũ. Seed và SQL tay phải tự xoá cache (`prisma/clear-cache.ts`).
+- `CatalogCacheListener` chạy **đồng bộ** (không `async: true`) và không có `await` trước lệnh Redis, để lệnh invalidation được gửi trước khi trả response.
+- Redis chỉ là lớp tăng tốc: lỗi/timeout (`REDIS_COMMAND_TIMEOUT_MS`) → log cảnh báo, đọc DB, không trả lỗi cho khách.
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.
