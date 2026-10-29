@@ -4,8 +4,11 @@ import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { envValidationSchema } from './config/env.validation';
 import { PrismaModule } from './database/prisma.module';
+import { RedisModule } from './database/redis.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { ProductsModule } from './modules/products/products.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -18,6 +21,9 @@ import { ProductsModule } from './modules/products/products.module';
       validationOptions: { abortEarly: false, allowUnknown: true },
     }),
     PrismaModule,
+    RedisModule,
+    AuthModule,
+    UsersModule,
     HealthModule,
     ProductsModule,
   ],

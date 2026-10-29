@@ -1,19 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException } from '../../common/exceptions/app.exception';
+import { Page, toPage } from '../../common/pagination';
 import { ListProductsQuery } from './dto/list-products.query';
 import { ProductListItem, ProductsRepository } from './products.repository';
 
-export interface PageMeta {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-}
-
-export interface ProductPage {
-  items: ProductListItem[];
-  meta: PageMeta;
-}
+export type ProductPage = Page<ProductListItem>;
 
 @Injectable()
 export class ProductsService {
@@ -36,9 +27,6 @@ export class ProductsService {
       limit,
     );
 
-    return {
-      items,
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
-    };
+    return toPage(items, total, page, limit);
   }
 }

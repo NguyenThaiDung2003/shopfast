@@ -35,6 +35,14 @@ Prisma: schema ở `apps/api/prisma/schema.prisma`. Migration sinh xong phải r
 
 Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt)` (`src/common/exceptions/app.exception.ts`). `HttpExceptionFilter` chuẩn hoá mọi lỗi thành `{ statusCode, code, message, path, timestamp }`.
 
+## Xác thực & phân quyền (ADR-0003)
+
+- `JwtAuthGuard` + `RolesGuard` là guard **toàn cục, mặc định từ chối**: endpoint mới tự động yêu cầu đăng nhập.
+- Endpoint công khai phải ghi rõ `@Public()`; giới hạn vai trò bằng `@Roles(Role.ADMIN, ...)`; lấy user bằng `@CurrentUser()` (`src/modules/auth/decorators/`).
+- Không bao giờ trả `passwordHash` ra ngoài – dùng `PublicUser` / `toPublicUser` của `users.repository.ts`.
+- Kiểm token ở nơi khác (WebSocket F02…) dùng `TokenService.verifyAccessToken` – không tự viết lại.
+- Redis dùng qua token `REDIS_CLIENT` (`src/database/redis.module.ts`); client fail-fast, nơi gọi phải bắt lỗi và suy giảm có kiểm soát (ví dụ `OtpService` trả 503).
+
 ## Cấu hình & secret
 
 - **Cấm hardcode secret** (mật khẩu, khoá API, JWT secret, connection string) trong mã nguồn, Dockerfile, compose hay file pipeline.
@@ -46,7 +54,8 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 
 - Mỗi tính năng phải có **unit test cho service** (`*.service.spec.ts`, mock repository).
 - Mục tiêu coverage tầng service **≥ 60%** (ngưỡng cấu hình trong `apps/api/package.json` → `jest.coverageThreshold`; `test:cov` thất bại nếu không đạt).
-- Endpoint quan trọng có e2e test trong `apps/api/test/*.e2e-spec.ts`.
+- Endpoint quan trọng có e2e test trong `apps/api/test/*.e2e-spec.ts`, tạo app bằng `createTestApp()` (`test/create-test-app.ts`).
+- E2E chạy với Postgres + Redis thật (`TEST_DATABASE_URL`, `TEST_REDIS_URL` trong `.env`, DB tên `*_test`) – cần `docker compose up -d postgres redis`. Global setup áp migration rồi TRUNCATE DB test; unit test không cần DB.
 
 ## Lệnh chuẩn (chạy ở gốc repo)
 

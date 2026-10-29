@@ -36,7 +36,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  orders Order[]
+  orders        Order[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
 }
@@ -120,4 +121,24 @@ model OrderItem {
 
   @@unique([orderId, productId])
   @@map("order_items")
+}
+
+/// Refresh token dạng chuỗi đục; chỉ lưu SHA-256. Cơ chế rotation/reuse detection: ADR-0003.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  /// Mọi token sinh ra từ cùng một lần đăng nhập chung familyId.
+  familyId  String    @map("family_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  userAgent String?   @map("user_agent")
+  ip        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
 }

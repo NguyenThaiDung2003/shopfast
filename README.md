@@ -75,6 +75,37 @@ curl "http://localhost:3000/api/products?minPrice=9000000&maxPrice=1000"
 
 Danh mục: `1` Điện thoại, `2` Laptop, `3` Phụ kiện, `4` Âm thanh, `5` Gia dụng.
 
+#### Xác thực
+
+Mọi endpoint yêu cầu `Authorization: Bearer <accessToken>` trừ các endpoint công khai (health, products, các endpoint đăng ký/đăng nhập/refresh/logout/OTP). Thiết kế: [ADR-0003](docs/adr/0003-quan-ly-refresh-token.md).
+
+| Method | Endpoint               | Quyền        | Mô tả                                                     |
+| ------ | ---------------------- | ------------ | --------------------------------------------------------- |
+| POST   | `/api/auth/register`   | công khai    | Đăng ký (luôn là CUSTOMER)                                |
+| POST   | `/api/auth/login`      | công khai    | Trả `accessToken` (15 phút) + `refreshToken` (7 ngày)     |
+| POST   | `/api/auth/refresh`    | công khai    | Đổi refresh token lấy cặp token mới (token cũ bị thu hồi) |
+| POST   | `/api/auth/logout`     | công khai    | Thu hồi phiên của refresh token gửi lên                   |
+| POST   | `/api/auth/logout-all` | đã đăng nhập | Thu hồi mọi phiên của user                                |
+| GET    | `/api/auth/me`         | đã đăng nhập | Thông tin user hiện tại                                   |
+| POST   | `/api/auth/otp/send`   | công khai    | Gửi OTP giả lập (mã in ra log api ở dev)                  |
+| POST   | `/api/auth/otp/verify` | công khai    | Xác thực OTP                                              |
+| GET    | `/api/users`           | ADMIN        | Danh sách user                                            |
+
+```bash
+# Đăng nhập bằng tài khoản seed (mật khẩu = SEED_USER_PASSWORD trong .env)
+TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin01@shopfast.local","password":"<SEED_USER_PASSWORD>"}' \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0)).accessToken')
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/users   # admin: 200, customer: 403
+
+# OTP: gửi rồi xem mã trong log api
+curl -X POST http://localhost:3000/api/auth/otp/send -H "Content-Type: application/json" \
+  -d '{"email":"customer01@shopfast.local","purpose":"VERIFY_EMAIL"}'
+docker compose logs api | grep "GIẢ LẬP"
+```
+
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 
 Giữ postgres/redis trong Docker, dừng container api rồi chạy api bằng Node trên host. `.env` ở gốc đã trỏ `localhost`:
@@ -89,6 +120,8 @@ pnpm --filter @shopfast/web dev             # UI demo tại http://localhost:517
 ```
 
 Lệnh kiểm tra chất lượng: `pnpm lint`, `pnpm test`, `pnpm test:cov`, `pnpm test:e2e`.
+
+`pnpm test:e2e` chạy với Postgres và Redis thật nên cần `docker compose up -d postgres redis` và hai biến `TEST_DATABASE_URL` (DB tên `*_test`, tự tạo) và `TEST_REDIS_URL` (Redis DB số khác, ví dụ `/1`) trong `.env`. **DB test bị xoá sạch dữ liệu mỗi lần chạy**; test từ chối chạy nếu URL test trùng URL dev. Unit test (`pnpm test`) không cần DB.
 
 ### 7. Dừng và dọn dẹp
 

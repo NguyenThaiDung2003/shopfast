@@ -1,5 +1,10 @@
-// Giá trị giả chỉ dùng cho e2e test, không phải secret thật.
+// Chạy trong mỗi worker Jest trước khi import app: trỏ app sang DB/Redis test.
+import { loadTestEnv } from './test-env';
+
+const { databaseUrl, redisUrl } = loadTestEnv();
+
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL ??= 'postgresql://test:test@localhost:5432/shopfast_test';
-process.env.REDIS_URL ??= 'redis://localhost:6379';
-process.env.JWT_SECRET ??= 'test-only-jwt-secret-not-used-in-production';
+process.env.DATABASE_URL = databaseUrl;
+process.env.REDIS_URL = redisUrl;
+// bcrypt cost thấp để test nhanh; production dùng mặc định 12.
+process.env.BCRYPT_ROUNDS = '4';
