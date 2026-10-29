@@ -16,6 +16,7 @@ export interface ErrorResponseBody {
   message: string;
   path: string;
   timestamp: string;
+  details?: unknown;
 }
 
 @Catch()
@@ -45,6 +46,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
       timestamp: new Date().toISOString(),
     };
+    if (exception instanceof AppException && exception.details !== undefined) {
+      body.details = exception.details;
+    }
 
     response.status(status).json(body);
   }

@@ -1,0 +1,199 @@
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { OrderStatus, Role } from '@prisma/client';
+import { AppException } from '../../common/exceptions/app.exception';
+import { Page, toPage } from '../../common/pagination';
+import type { AuthUser } from '../auth/auth.types';
+import { CartRepository } from '../cart/cart.repository';
+import { PRODUCT_UPDATED, ProductUpdatedEvent } from '../catalog/events/product-updated.event';
+import { ListOrdersQuery } from './dto/list-orders.query';
+import { ORDER_CREATED, OrderCreatedEvent } from './events/order-created.event';
+import { OrderRecord, OrdersRepository, Shortage } from './orders.repository';
+
+export interface OrderItemView {
+  productId: number;
+  sku: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface OrderView {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  totalAmount: number;
+  paidAt: Date | null;
+  createdAt: Date;
+  items: OrderItemView[];
+}
+
+export interface CreateOrderOutcome {
+  order: OrderView;
+  /** true: trả lại đơn đã tạo trước đó với cùng Idempotency-Key. */
+  replayed: boolean;
+}
+
+export function toOrderView(order: OrderRecord): OrderView {
+  const { id, code, status, totalAmount, paidAt, createdAt, items } = order;
+  return {
+    id,
+    code,
+    status,
+    totalAmount,
+    paidAt,
+    createdAt,
+    items: items.map(({ productId, quantity, unitPrice, product }) => ({
+      productId,
+      sku: product.sku,
+      name: product.name,
+      quantity,
+      unitPrice,
+      lineTotal: unitPrice * quantity,
+    })),
+  };
+}
+
+/** "Không đủ hàng: "A" (SKU-1) còn 2, bạn đặt 3; "B" (SKU-2) đã hết hàng, bạn đặt 1." */
+export function formatShortages(shortages: Shortage[]): string {
+  const parts = shortages.map(({ name, sku, requested, available }) => {
+    const label = sku ? `"${name}" (${sku})` : `"${name}"`;
+    const left = available === 0 ? 'đã hết hàng' : `còn ${available}`;
+    return `${label} ${left}, bạn đặt ${requested}`;
+  });
+  return `Không đủ hàng: ${parts.join('; ')}. Vui lòng cập nhật giỏ hàng.`;
+}
+
+const STAFF_ROLES: readonly Role[] = [Role.SUPPORT, Role.WAREHOUSE, Role.ADMIN];
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    private readonly ordersRepository: OrdersRepository,
+    private readonly cartRepository: CartRepository,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
+
+  async create(user: AuthUser, idempotencyKey?: string): Promise<CreateOrderOutcome> {
+    const replay = await this.findReplay(user.id, idempotencyKey);
+    if (replay) return replay;
+
+    const lines = await this.cartRepository.findCheckoutLines(user.id);
+    if (lines.length === 0) {
+      // Request trùng key có thể đọc giỏ ngay sau khi request đầu commit và xoá giỏ:
+      // tra lại key để trả đơn đó thay vì báo giỏ trống.
+      const lateReplay = await this.findReplay(user.id, idempotencyKey);
+      if (lateReplay) return lateReplay;
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        'CART_EMPTY',
+        'Giỏ hàng đang trống, hãy thêm sản phẩm trước khi đặt hàng.',
+      );
+    }
+
+    const result = await this.ordersRepository.createFromCart(user.id, lines, idempotencyKey);
+    switch (result.status) {
+      case 'created':
+        this.publishCreated(result.order, result.stockAfter, user);
+        return { order: toOrderView(result.order), replayed: false };
+
+      case 'insufficient_stock':
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          'OUT_OF_STOCK',
+          formatShortages(result.shortages),
+          result.shortages,
+        );
+
+      case 'duplicate': {
+        // Một request khác cùng key vừa tạo đơn (bấm hai lần gần như đồng thời).
+        const existing = await this.findReplay(user.id, idempotencyKey);
+        if (existing) return existing;
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          'IDEMPOTENCY_CONFLICT',
+          'Yêu cầu đặt hàng này đang được xử lý, vui lòng thử lại sau giây lát.',
+        );
+      }
+
+      case 'busy':
+        throw new AppException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'ORDER_BUSY',
+          'Hệ thống đang đông, vui lòng thử đặt hàng lại sau giây lát.',
+        );
+
+      case 'total_overflow':
+        throw new AppException(
+          HttpStatus.BAD_REQUEST,
+          'ORDER_TOO_LARGE',
+          'Giá trị đơn hàng vượt giới hạn cho phép, vui lòng tách thành nhiều đơn.',
+        );
+    }
+  }
+
+  async listMine(user: AuthUser, query: ListOrdersQuery): Promise<Page<OrderView>> {
+    const { page, limit } = query;
+    const { items, total } = await this.ordersRepository.findPageByUser(
+      user.id,
+      (page - 1) * limit,
+      limit,
+    );
+    return toPage(items.map(toOrderView), total, page, limit);
+  }
+
+  /** Chủ đơn hoặc nhân viên; customer khác nhận 404 để không lộ đơn có tồn tại hay không. */
+  async findOne(user: AuthUser, orderId: string): Promise<OrderView> {
+    const order = await this.ordersRepository.findById(orderId);
+    if (!order || (order.userId !== user.id && !STAFF_ROLES.includes(user.role))) {
+      throw new AppException(HttpStatus.NOT_FOUND, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng.');
+    }
+    return toOrderView(order);
+  }
+
+  private async findReplay(
+    userId: string,
+    idempotencyKey?: string,
+  ): Promise<CreateOrderOutcome | null> {
+    if (!idempotencyKey) return null;
+    const existing = await this.ordersRepository.findByIdempotencyKey(userId, idempotencyKey);
+    return existing ? { order: toOrderView(existing), replayed: true } : null;
+  }
+
+  /** Chỉ gọi sau khi transaction đã commit (ADR-0004). */
+  private publishCreated(
+    order: OrderRecord,
+    stockAfter: Map<number, number>,
+    user: AuthUser,
+  ): void {
+    this.eventEmitter.emit(
+      ORDER_CREATED,
+      new OrderCreatedEvent(
+        order.id,
+        order.code,
+        order.userId,
+        order.totalAmount,
+        order.items.map(({ productId, quantity, unitPrice }) => ({
+          productId,
+          quantity,
+          unitPrice,
+        })),
+      ),
+    );
+    // Tồn kho đổi → cache sản phẩm (F04) và realtime (F02) cần biết, giống khi kho sửa tay.
+    for (const item of order.items) {
+      const to = stockAfter.get(item.productId);
+      if (to === undefined) continue;
+      this.eventEmitter.emit(
+        PRODUCT_UPDATED,
+        new ProductUpdatedEvent(
+          item.productId,
+          item.product.sku,
+          { stock: { from: to + item.quantity, to } },
+          user,
+        ),
+      );
+    }
+  }
+}

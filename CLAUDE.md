@@ -51,6 +51,15 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Listener: `@OnEvent(PRODUCT_UPDATED, { async: true, suppressErrors: true })`, tự try/catch + log; việc nặng thì đẩy sang queue (F05). Lỗi listener không được làm hỏng request gốc.
 - Cập nhật tồn kho dùng một câu `UPDATE` nguyên tử có điều kiện (`CatalogRepository.applyPatch`), không dùng interactive transaction SELECT-rồi-UPDATE (cạn connection pool khi tranh chấp).
 
+## Tồn kho, đặt hàng & transaction (ADR-0005)
+
+- Trừ kho **chỉ** bằng `UPDATE products SET stock = stock - $qty WHERE id = $id AND stock >= $qty` và kiểm số dòng bị ảnh hưởng; không đọc-kiểm-ghi trong app, không giữ tồn kho ở Redis.
+- Nhiều dòng trong một transaction: khoá/trừ **theo `productId` tăng dần** để không deadlock.
+- Interactive transaction (`prisma.$transaction(async tx => …)`) phải ngắn, không gọi dịch vụ ngoài, đặt `maxWait`/`timeout` rõ ràng; `P2028` → 503 tiếng Việt.
+- Muốn rollback từ logic nghiệp vụ: ném lỗi nội bộ trong transaction, bắt ngay bên ngoài và **repository trả union kết quả** (`{ status: 'created' | 'insufficient_stock' | … }`); service ánh xạ union sang `AppException`.
+- `POST /orders` hỗ trợ `Idempotency-Key` (unique theo user, chèn đơn trước khi trừ kho). Endpoint ghi mới có rủi ro bấm trùng nên theo cùng cách.
+- Lỗi có dữ liệu cho client: `AppException(status, code, message, details)` → body có `details`.
+
 ## Cấu hình & secret
 
 - **Cấm hardcode secret** (mật khẩu, khoá API, JWT secret, connection string) trong mã nguồn, Dockerfile, compose hay file pipeline.

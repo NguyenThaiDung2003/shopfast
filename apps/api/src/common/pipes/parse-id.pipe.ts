@@ -17,3 +17,16 @@ export class ParseIdPipe implements PipeTransform<string, number> {
     return id;
   }
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Id dạng UUID trên URL (users, orders). */
+@Injectable()
+export class ParseUuidPipe implements PipeTransform<string, string> {
+  transform(value: string): string {
+    if (!UUID_PATTERN.test(value)) {
+      throw new AppException(HttpStatus.BAD_REQUEST, 'INVALID_ID', 'Mã định danh không hợp lệ.');
+    }
+    return value.toLowerCase();
+  }
+}

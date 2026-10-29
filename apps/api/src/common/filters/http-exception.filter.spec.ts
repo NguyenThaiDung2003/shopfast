@@ -29,6 +29,19 @@ describe('HttpExceptionFilter', () => {
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'OUT_OF_STOCK', message: 'Sản phẩm đã hết hàng.' }),
     );
+    expect(json.mock.calls[0][0]).not.toHaveProperty('details');
+  });
+
+  it('kèm details khi AppException có dữ liệu có cấu trúc', () => {
+    const { host, json } = createHost();
+    const details = [{ productId: 1, requested: 3, available: 2 }];
+
+    filter.catch(
+      new AppException(HttpStatus.CONFLICT, 'OUT_OF_STOCK', 'Thiếu hàng.', details),
+      host,
+    );
+
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ details }));
   });
 
   it('thay thông điệp mặc định của Nest bằng tiếng Việt', () => {

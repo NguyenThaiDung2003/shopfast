@@ -38,6 +38,7 @@ model User {
 
   orders        Order[]
   refreshTokens RefreshToken[]
+  cartItems     CartItem[]
 
   @@map("users")
 }
@@ -80,6 +81,7 @@ model Product {
   category   Category    @relation(fields: [categoryId], references: [id])
   brand      Brand       @relation(fields: [brandId], references: [id])
   orderItems OrderItem[]
+  cartItems  CartItem[]
 
   // Index cho truy vấn catalog (lý do: ADR-0002 mục Index).
   @@index([categoryId, price])
@@ -90,20 +92,23 @@ model Product {
 }
 
 model Order {
-  id          String      @id @default(uuid()) @db.Uuid
-  /// Mã đơn hiển thị cho khách, ví dụ SF-000001.
-  code        String      @unique
-  userId      String      @map("user_id") @db.Uuid
-  status      OrderStatus @default(PENDING_PAYMENT)
+  id             String      @id @default(uuid()) @db.Uuid
+  /// Mã đơn hiển thị cho khách, ví dụ SF-000001. Sinh từ sequence order_code_seq (migration cart_and_order).
+  code           String      @unique @default(dbgenerated("('SF-'::text || lpad((nextval('order_code_seq'::regclass))::text, 6, '0'::text))"))
+  userId         String      @map("user_id") @db.Uuid
+  status         OrderStatus @default(PENDING_PAYMENT)
   /// Tổng tiền, đơn vị đồng (VND).
-  totalAmount Int         @map("total_amount")
-  paidAt      DateTime?   @map("paid_at")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  totalAmount    Int         @map("total_amount")
+  paidAt         DateTime?   @map("paid_at")
+  /// Header Idempotency-Key của request tạo đơn; unique theo user (ADR-0005).
+  idempotencyKey String?     @map("idempotency_key")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
 
   user  User        @relation(fields: [userId], references: [id])
   items OrderItem[]
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
   @@index([status])
   @@map("orders")
@@ -143,4 +148,20 @@ model RefreshToken {
   @@index([userId])
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+/// Giỏ hàng của customer: mỗi dòng là một sản phẩm. CHECK quantity 1..99 trong migration.
+model CartItem {
+  userId    String   @map("user_id") @db.Uuid
+  productId Int      @map("product_id")
+  quantity  Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([productId])
+  @@map("cart_items")
 }

@@ -34,6 +34,15 @@ Nếu `CatalogService` gọi thẳng từng service đó, module catalog sẽ ph
 - Payload chứa giá trị cũ và mới (`changes.price.from/to`, `changes.stock.from/to`), người thực hiện và thời điểm, để listener không phải đọc lại DB.
 - Listener đăng ký `@OnEvent(PRODUCT_UPDATED, { async: true, suppressErrors: true })` và tự bắt lỗi. Lỗi ở listener không làm hỏng request cập nhật.
 
+### Danh sách event
+
+| Event             | Phát từ                                                                                                          | Payload                                                                                             | Listener dự kiến                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `product.updated` | `CatalogService.update` (sửa giá/tồn kho), `OrdersService.create` (trừ kho khi đặt hàng, mỗi sản phẩm một event) | `productId`, `sku`, `changes.price/stock {from,to}`, `updatedBy`, `occurredAt`                      | Làm mới cache sản phẩm (F04), realtime tồn kho (F02)                                                     |
+| `order.created`   | `OrdersService.create` sau khi transaction đặt hàng commit (ADR-0005)                                            | `orderId`, `code`, `userId`, `totalAmount`, `items[{productId, quantity, unitPrice}]`, `occurredAt` | Email xác nhận, xuất hoá đơn, đồng bộ kho đối tác, hẹn nhắc thanh toán sau 30 phút (F05 – đẩy vào queue) |
+
+Khi trả lại đơn cũ theo Idempotency-Key (replay): **không phát event lần hai**.
+
 ## Đánh đổi
 
 | Đánh đổi                                                                       | Giảm thiểu                                                                                                                                               |

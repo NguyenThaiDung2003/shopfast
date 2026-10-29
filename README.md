@@ -92,6 +92,29 @@ curl -X PATCH http://localhost:3000/api/products/1 -H "Authorization: Bearer $TO
   -H "Content-Type: application/json" -d '{"stockDelta":20}'
 ```
 
+#### Giỏ hàng & đơn hàng
+
+Cơ chế chống bán vượt và chống tạo trùng đơn: [ADR-0005](docs/adr/0005-khoa-ton-kho-khi-dat-hang.md).
+
+| Method | Endpoint                                  | Quyền                              | Mô tả                                                                                                                                                                    |
+| ------ | ----------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/cart`                               | CUSTOMER                           | Giỏ hàng, tạm tính, cờ `insufficientStock` từng dòng                                                                                                                     |
+| POST   | `/api/cart/items`                         | CUSTOMER                           | `{ productId, quantity }` – cộng dồn, tối đa 99/sản phẩm                                                                                                                 |
+| PATCH  | `/api/cart/items/:productId`              | CUSTOMER                           | `{ quantity }` – đặt lại số lượng                                                                                                                                        |
+| DELETE | `/api/cart/items/:productId`, `/api/cart` | CUSTOMER                           | Xoá một dòng / xoá hết                                                                                                                                                   |
+| POST   | `/api/orders`                             | CUSTOMER                           | Tạo đơn từ giỏ (201). Header `Idempotency-Key` tuỳ chọn: gửi lại cùng key → 200 + `Idempotent-Replayed: true`, cùng đơn. Thiếu hàng → 409 `OUT_OF_STOCK` nêu rõ sản phẩm |
+| GET    | `/api/orders`                             | CUSTOMER                           | Lịch sử đơn của mình (`page`, `limit` ≤ 50)                                                                                                                              |
+| GET    | `/api/orders/:id`                         | chủ đơn, SUPPORT, WAREHOUSE, ADMIN | Chi tiết đơn                                                                                                                                                             |
+
+```bash
+# Customer (TOKEN của customer01): thêm vào giỏ rồi đặt hàng, an toàn khi bấm hai lần
+curl -X POST http://localhost:3000/api/cart/items -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"productId":2,"quantity":1}'
+KEY=$(node -e 'console.log(crypto.randomUUID())')
+curl -i -X POST http://localhost:3000/api/orders -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY"
+curl -i -X POST http://localhost:3000/api/orders -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY"  # 200, cùng đơn
+```
+
 #### Xác thực
 
 Mọi endpoint yêu cầu `Authorization: Bearer <accessToken>` trừ các endpoint công khai (health, products, các endpoint đăng ký/đăng nhập/refresh/logout/OTP). Thiết kế: [ADR-0003](docs/adr/0003-quan-ly-refresh-token.md).

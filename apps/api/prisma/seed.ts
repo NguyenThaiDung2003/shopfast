@@ -150,7 +150,7 @@ async function main(): Promise<void> {
   try {
     await prisma.$transaction(
       async (tx) => {
-        await tx.$executeRaw`TRUNCATE TABLE order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
+        await tx.$executeRaw`TRUNCATE TABLE cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
 
         const categories = await tx.category.createManyAndReturn({
           data: CATEGORIES.map(({ name, slug }) => ({ name, slug })),
@@ -233,6 +233,8 @@ async function main(): Promise<void> {
         }
         await tx.order.createMany({ data: orders });
         await tx.orderItem.createMany({ data: orderItems });
+        // Mã seed được gán tay SF-000001..; đơn tạo qua API tiếp nối từ SF-000051.
+        await tx.$queryRaw`SELECT setval('order_code_seq', ${ORDER_COUNT})`;
       },
       { timeout: 60_000 },
     );
