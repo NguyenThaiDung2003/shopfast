@@ -72,6 +72,14 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - `CatalogCacheListener` chạy **đồng bộ** (không `async: true`) và không có `await` trước lệnh Redis, để lệnh invalidation được gửi trước khi trả response.
 - Redis chỉ là lớp tăng tốc: lỗi/timeout (`REDIS_COMMAND_TIMEOUT_MS`) → log cảnh báo, đọc DB, không trả lỗi cho khách.
 
+## Rate limit & khoá đăng nhập (ADR-0008)
+
+- `AppThrottlerGuard` (`modules/rate-limit/`) là guard toàn cục, đếm trên Redis: tracker `user:<id>` khi đã đăng nhập, `ip:<req.ip>` khi chưa. `RateLimitModule` phải import **sau** `AuthModule` để guard chạy sau `JwtAuthGuard`.
+- Hạn mức chung đếm gộp toàn API. Endpoint nhạy cảm (đăng nhập, gửi OTP, đặt đơn khuyến mãi…) gắn thêm `@RateLimit('<policy>')`; policy mới khai báo trong `rate-limit.policies.ts` + biến env `RATE_LIMIT_*` dạng `<số>/<giây>`.
+- IP thật lấy qua `X-Forwarded-For` nhờ `TRUST_PROXY` = đúng số proxy đứng trước API (sau Nginx: `1`). Không tự đọc header `X-Forwarded-For`, dùng `req.ip`.
+- Lỗi 429 tự viết: `AppException(429, code, thôngĐiệp, { retryAfterSeconds })`. `HttpExceptionFilter` đặt `Retry-After` từ đó; thông điệp dùng `formatWait` (`common/messages/vi.ts`).
+- Đăng nhập sai bị đếm theo **email** (`LoginAttemptsService`), không theo IP; khoá kiểm trước bcrypt. Redis lỗi → rate limit và khoá cho qua + log cảnh báo.
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.

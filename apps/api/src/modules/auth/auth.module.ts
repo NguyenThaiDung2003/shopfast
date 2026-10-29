@@ -8,6 +8,8 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { LoginAttemptsRepository } from './login-attempts.repository';
+import { LoginAttemptsService } from './login-attempts.service';
 import { LogOtpSender, OTP_SENDER } from './otp-sender';
 import { OtpRepository } from './otp.repository';
 import { OtpService } from './otp.service';
@@ -36,6 +38,8 @@ import { TokenService } from './token.service';
     TokenService,
     PasswordHasher,
     RefreshTokensRepository,
+    LoginAttemptsService,
+    LoginAttemptsRepository,
     OtpService,
     OtpRepository,
     { provide: OTP_SENDER, useClass: LogOtpSender },

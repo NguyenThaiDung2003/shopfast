@@ -3,6 +3,7 @@ import { AppException } from '../../common/exceptions/app.exception';
 import { UsersRepository } from '../users/users.repository';
 import { AuthService } from './auth.service';
 import type { AuthTokens } from './auth.types';
+import { LoginAttemptsService, loginLocked } from './login-attempts.service';
 import { PasswordHasher } from './password-hasher';
 import { TokenService } from './token.service';
 
@@ -29,6 +30,9 @@ describe('AuthService', () => {
   let tokenService: jest.Mocked<
     Pick<TokenService, 'issueTokens' | 'rotate' | 'revoke' | 'revokeAllForUser'>
   >;
+  let loginAttempts: jest.Mocked<
+    Pick<LoginAttemptsService, 'assertNotLocked' | 'recordFailure' | 'reset'>
+  >;
   let service: AuthService;
 
   beforeEach(() => {
@@ -48,10 +52,16 @@ describe('AuthService', () => {
       revoke: jest.fn().mockResolvedValue(undefined),
       revokeAllForUser: jest.fn().mockResolvedValue(undefined),
     };
+    loginAttempts = {
+      assertNotLocked: jest.fn().mockResolvedValue(undefined),
+      recordFailure: jest.fn().mockResolvedValue(undefined),
+      reset: jest.fn().mockResolvedValue(undefined),
+    };
     service = new AuthService(
       users as unknown as UsersRepository,
       hasher as unknown as PasswordHasher,
       tokenService as unknown as TokenService,
+      loginAttempts as unknown as LoginAttemptsService,
     );
   });
 
@@ -101,6 +111,8 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('access');
       expect(result.user).not.toHaveProperty('passwordHash');
       expect(result.user.role).toBe(Role.CUSTOMER);
+      expect(loginAttempts.reset).toHaveBeenCalledWith(storedUser.email);
+      expect(loginAttempts.recordFailure).not.toHaveBeenCalled();
     });
 
     it('sai mật khẩu → INVALID_CREDENTIALS', async () => {
@@ -115,9 +127,11 @@ describe('AuthService', () => {
         userMessage: 'Email hoặc mật khẩu không đúng.',
       });
       expect(tokenService.issueTokens).not.toHaveBeenCalled();
+      expect(loginAttempts.recordFailure).toHaveBeenCalledWith(storedUser.email);
+      expect(loginAttempts.reset).not.toHaveBeenCalled();
     });
 
-    it('email không tồn tại → cùng lỗi và vẫn tốn thời gian so mật khẩu giả', async () => {
+    it('email không tồn tại → cùng lỗi, vẫn tốn thời gian so mật khẩu giả và vẫn bị đếm', async () => {
       users.findByEmailWithPassword.mockResolvedValue(null);
 
       await expect(
@@ -125,6 +139,30 @@ describe('AuthService', () => {
       ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
       expect(hasher.compareDummy).toHaveBeenCalledWith('bat-ky1');
       expect(hasher.compare).not.toHaveBeenCalled();
+      expect(loginAttempts.recordFailure).toHaveBeenCalledWith('khongco@shopfast.local');
+    });
+
+    it('đang khoá → LOGIN_LOCKED trước khi đọc DB hay chạy bcrypt, kể cả mật khẩu đúng', async () => {
+      loginAttempts.assertNotLocked.mockRejectedValue(loginLocked(300_000));
+      users.findByEmailWithPassword.mockResolvedValue(storedUser);
+      hasher.compare.mockResolvedValue(true);
+
+      await expect(
+        service.login({ email: storedUser.email, password: 'dung-mat-khau1' }, client),
+      ).rejects.toMatchObject({ code: 'LOGIN_LOCKED', details: { retryAfterSeconds: 300 } });
+      expect(users.findByEmailWithPassword).not.toHaveBeenCalled();
+      expect(hasher.compare).not.toHaveBeenCalled();
+      expect(tokenService.issueTokens).not.toHaveBeenCalled();
+    });
+
+    it('lần sai làm khoá → trả LOGIN_LOCKED thay cho INVALID_CREDENTIALS', async () => {
+      users.findByEmailWithPassword.mockResolvedValue(storedUser);
+      hasher.compare.mockResolvedValue(false);
+      loginAttempts.recordFailure.mockRejectedValue(loginLocked(60_000));
+
+      await expect(
+        service.login({ email: storedUser.email, password: 'sai' }, client),
+      ).rejects.toMatchObject({ code: 'LOGIN_LOCKED', details: { retryAfterSeconds: 60 } });
     });
   });
 

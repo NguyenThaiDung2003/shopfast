@@ -3,6 +3,7 @@ import { AppException } from '../../common/exceptions/app.exception';
 import { PublicUser, toPublicUser, UsersRepository } from '../users/users.repository';
 import type { AuthResult, AuthTokens, ClientContext } from './auth.types';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginAttemptsService } from './login-attempts.service';
 import { PasswordHasher } from './password-hasher';
 import { TokenService } from './token.service';
 
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly usersRepository: UsersRepository,
     private readonly passwordHasher: PasswordHasher,
     private readonly tokenService: TokenService,
+    private readonly loginAttempts: LoginAttemptsService,
   ) {}
 
   /** Đăng ký luôn tạo vai trò CUSTOMER; tài khoản nhân viên do admin cấp. */
@@ -36,15 +38,20 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, client: ClientContext): Promise<AuthResult> {
+    // Kiểm khoá trước bcrypt: đang khoá thì không cho thử mật khẩu nào, kể cả đúng.
+    await this.loginAttempts.assertNotLocked(dto.email);
+
     const user = await this.usersRepository.findByEmailWithPassword(dto.email);
-    if (!user) {
-      await this.passwordHasher.compareDummy(dto.password);
+    // Email không tồn tại cũng đếm và bị khoá y hệt, để không dò được email nào đã đăng ký.
+    let valid = false;
+    if (user) valid = await this.passwordHasher.compare(dto.password, user.passwordHash);
+    else await this.passwordHasher.compareDummy(dto.password);
+    if (!user || !valid) {
+      await this.loginAttempts.recordFailure(dto.email);
       throw invalidCredentials();
     }
 
-    const valid = await this.passwordHasher.compare(dto.password, user.passwordHash);
-    if (!valid) throw invalidCredentials();
-
+    await this.loginAttempts.reset(dto.email);
     const tokens = await this.tokenService.issueTokens(user, client);
     return { user: toPublicUser(user), ...tokens };
   }

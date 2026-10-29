@@ -14,7 +14,7 @@ function hashCode(code: string): Buffer {
 
 /**
  * OTP 6 chữ số lưu trong Redis có TTL. Không kiểm tra email có tồn tại hay không
- * để không lộ thông tin tài khoản. Rate limit gửi mã sẽ gắn ở F03.
+ * để không lộ thông tin tài khoản. Rate limit gửi mã: `@RateLimit('otpSend')` (ADR-0008).
  */
 @Injectable()
 export class OtpService {

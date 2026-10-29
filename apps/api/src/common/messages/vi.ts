@@ -17,3 +17,9 @@ export const FALLBACK_ERROR_MESSAGE = 'Đã có lỗi xảy ra, vui lòng thử 
 export function defaultMessageFor(status: number): string {
   return DEFAULT_ERROR_MESSAGES[status as HttpStatus] ?? FALLBACK_ERROR_MESSAGE;
 }
+
+/** "45 giây" hoặc "300 giây (khoảng 5 phút)" – dùng cho thông điệp 429. */
+export function formatWait(seconds: number): string {
+  if (seconds < 60) return `${seconds} giây`;
+  return `${seconds} giây (khoảng ${Math.round(seconds / 60)} phút)`;
+}

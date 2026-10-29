@@ -13,6 +13,7 @@ import { ParseUuidPipe } from '../../common/pipes/parse-id.pipe';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RateLimit } from '../rate-limit/rate-limit.decorator';
 import { ListOrdersQuery } from './dto/list-orders.query';
 import { OrderDto, OrderPageDto } from './dto/order.response';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -30,9 +31,12 @@ export class OrdersController {
    *
    * Trừ kho nguyên tử trong một transaction (ADR-0005). 201 khi tạo mới; 200 + header
    * `Idempotent-Replayed: true` khi gửi lại cùng Idempotency-Key. Thiếu hàng → 409 `OUT_OF_STOCK`.
+   * Hạn mức riêng theo user (đơn khuyến mãi/flash sale, ADR-0008) → 429.
    */
   @Post()
   @Roles(Role.CUSTOMER)
+  // Chưa có endpoint khuyến mãi riêng: áp cho mọi đơn, chuyển sang endpoint flash sale khi có.
+  @RateLimit('promoOrder')
   @ApiHeader({
     name: 'Idempotency-Key',
     required: false,
@@ -40,7 +44,7 @@ export class OrdersController {
   })
   @ApiCreatedResponse({ type: OrderDto, description: 'Đơn mới' })
   @ApiOkResponse({ type: OrderDto, description: 'Đơn đã tạo trước đó với cùng Idempotency-Key' })
-  @ApiErrorResponses(400, 401, 403, 409, 503)
+  @ApiErrorResponses(400, 401, 403, 409, 429, 503)
   async create(
     @CurrentUser() user: AuthUser,
     @IdempotencyKey(IdempotencyKeyPipe) idempotencyKey: string | undefined,

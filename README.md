@@ -176,6 +176,26 @@ curl -X POST http://localhost:3000/api/auth/otp/send -H "Content-Type: applicati
 docker compose logs api | grep "GIẢ LẬP"
 ```
 
+#### Rate limit & khoá đăng nhập
+
+Bộ đếm nằm trong Redis nên đúng khi chạy nhiều instance ([ADR-0008](docs/adr/0008-rate-limit-va-khoa-dang-nhap.md)). Đếm theo user khi đã đăng nhập, theo IP khi chưa (IP thật lấy qua `X-Forwarded-For`, cần `TRUST_PROXY=1` khi đứng sau Nginx – xem [infra/nginx/api.conf](infra/nginx/api.conf)).
+
+| Hạn mức (mặc định) | Áp cho                    | Biến môi trường          |
+| ------------------ | ------------------------- | ------------------------ |
+| 300 request / 60 s | toàn API, gộp mọi route   | `RATE_LIMIT_GLOBAL`      |
+| 10 request / 60 s  | `POST /api/auth/login`    | `RATE_LIMIT_LOGIN`       |
+| 3 request / 5 phút | `POST /api/auth/otp/send` | `RATE_LIMIT_OTP_SEND`    |
+| 5 request / 60 s   | `POST /api/orders`        | `RATE_LIMIT_PROMO_ORDER` |
+
+Vượt hạn mức → `429 TOO_MANY_REQUESTS`, header `Retry-After` và `details.retryAfterSeconds`. Ngoài ra, sai mật khẩu 5 lần liên tiếp cho **cùng một email** (từ bất kỳ IP nào) → `429 LOGIN_LOCKED`, khoá 1 phút; các lần khoá sau 5 phút rồi 30 phút; đăng nhập đúng thì reset. Redis lỗi thì cả hai cơ chế tạm cho qua và log cảnh báo.
+
+```bash
+# Mở khoá tay một email (dev)
+EMAIL_HASH=$(printf '%s' 'customer01@shopfast.local' | sha256sum | cut -d' ' -f1)
+docker compose exec redis redis-cli DEL \
+  auth:login:fail:$EMAIL_HASH auth:login:strikes:$EMAIL_HASH auth:login:lock:$EMAIL_HASH
+```
+
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 
 Giữ postgres/redis trong Docker, dừng container api rồi chạy api bằng Node trên host. `.env` ở gốc đã trỏ `localhost`:

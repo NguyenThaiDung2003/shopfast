@@ -8,3 +8,11 @@ process.env.DATABASE_URL = databaseUrl;
 process.env.REDIS_URL = redisUrl;
 // bcrypt cost thấp để test nhanh; production dùng mặc định 12.
 process.env.BCRYPT_ROUNDS = '4';
+// Test giả IP client bằng X-Forwarded-For như khi đứng sau Nginx (ADR-0008).
+process.env.TRUST_PROXY = '1';
+// Mọi suite chạy từ cùng 127.0.0.1 và dùng chung Redis test: hạn mức rất cao để không vướng.
+// rate-limit.e2e-spec.ts tự hạ hạn mức (test/rate-limit.env.ts).
+process.env.RATE_LIMIT_GLOBAL = '100000/60';
+process.env.RATE_LIMIT_LOGIN = '100000/60';
+process.env.RATE_LIMIT_OTP_SEND = '100000/60';
+process.env.RATE_LIMIT_PROMO_ORDER = '100000/60';

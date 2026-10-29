@@ -49,7 +49,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof AppException && exception.details !== undefined) {
       body.details = exception.details;
     }
+    // Rate limit và khoá đăng nhập (ADR-0008) đều mang số giây chờ trong details.
+    const retryAfter = retryAfterSeconds(body.details);
+    if (status === HttpStatus.TOO_MANY_REQUESTS && retryAfter !== undefined) {
+      response.setHeader('Retry-After', String(retryAfter));
+    }
 
     response.status(status).json(body);
   }
+}
+
+function retryAfterSeconds(details: unknown): number | undefined {
+  if (typeof details !== 'object' || details === null) return undefined;
+  const value = (details as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }

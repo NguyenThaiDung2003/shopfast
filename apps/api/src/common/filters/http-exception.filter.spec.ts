@@ -5,13 +5,14 @@ import { HttpExceptionFilter } from './http-exception.filter';
 function createHost() {
   const json = jest.fn();
   const status = jest.fn().mockReturnValue({ json });
+  const setHeader = jest.fn();
   const host = {
     switchToHttp: () => ({
-      getResponse: () => ({ status }),
+      getResponse: () => ({ status, setHeader }),
       getRequest: () => ({ method: 'GET', url: '/api/orders/1' }),
     }),
   } as unknown as ArgumentsHost;
-  return { host, status, json };
+  return { host, status, json, setHeader };
 }
 
 describe('HttpExceptionFilter', () => {
@@ -42,6 +43,32 @@ describe('HttpExceptionFilter', () => {
     );
 
     expect(json).toHaveBeenCalledWith(expect.objectContaining({ details }));
+  });
+
+  it('429 có details.retryAfterSeconds → đặt header Retry-After', () => {
+    const { host, status, setHeader } = createHost();
+
+    filter.catch(
+      new AppException(HttpStatus.TOO_MANY_REQUESTS, 'TOO_MANY_REQUESTS', 'Chậm lại.', {
+        retryAfterSeconds: 42,
+      }),
+      host,
+    );
+
+    expect(status).toHaveBeenCalledWith(429);
+    expect(setHeader).toHaveBeenCalledWith('Retry-After', '42');
+  });
+
+  it('lỗi khác hoặc 429 không có số giây → không đặt Retry-After', () => {
+    const { host, setHeader } = createHost();
+
+    filter.catch(
+      new AppException(HttpStatus.TOO_MANY_REQUESTS, 'OTP_TOO_MANY_ATTEMPTS', 'x'),
+      host,
+    );
+    filter.catch(new AppException(HttpStatus.CONFLICT, 'X', 'y', { retryAfterSeconds: 5 }), host);
+
+    expect(setHeader).not.toHaveBeenCalled();
   });
 
   it('thay thông điệp mặc định của Nest bằng tiếng Việt', () => {

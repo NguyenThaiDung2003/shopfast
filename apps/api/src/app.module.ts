@@ -9,6 +9,7 @@ import { RedisModule } from './database/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { CartModule } from './modules/cart/cart.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { UsersModule } from './modules/users/users.module';
@@ -28,6 +29,8 @@ import { UsersModule } from './modules/users/users.module';
     PrismaModule,
     RedisModule,
     AuthModule,
+    // Sau AuthModule: guard rate limit cần request.user của JwtAuthGuard (ADR-0008).
+    RateLimitModule,
     UsersModule,
     HealthModule,
     CatalogModule,
