@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { clearCatalogCache } from './clear-cache';
+import { sampleCompareAtPrice, sampleImageUrl } from './product-media';
 
 const PRODUCT_COUNT = 200;
 const ORDER_COUNT = 50;
@@ -236,6 +237,8 @@ async function main(): Promise<void> {
             slug: `${slugify(name)}-${sku.toLowerCase()}`,
             description: `${name} chính hãng ${brand}, bảo hành 12 tháng.`,
             price,
+            compareAtPrice: sampleCompareAtPrice(i + 1, price),
+            imageUrl: sampleImageUrl(category.slug),
             stock,
             categoryId: categories[categoryIndex]!.id,
             brandId: brandIdByName.get(brand)!,

@@ -31,8 +31,8 @@ import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AskAssistantDto } from './dto/ask-assistant.dto';
 import { AssistantReplyDto } from './dto/assistant-reply.response';
 import { CreateTicketDto } from './dto/create-ticket.dto';
-import { ListTicketsQuery, PageQuery } from './dto/list-tickets.query';
-import { TicketDetailDto, TicketPageDto } from './dto/ticket.response';
+import { ListMyTicketsQuery, ListTicketsQuery } from './dto/list-tickets.query';
+import { CountedTicketPageDto, TicketDetailDto } from './dto/ticket.response';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsService } from './tickets.service';
 
@@ -76,20 +76,36 @@ export class TicketsController {
     return ticket;
   }
 
-  /** Ticket của tôi (mới nhất trước) */
+  /**
+   * Ticket của tôi (mới nhất trước)
+   *
+   * Lọc theo `status` (nhiều giá trị cách nhau dấu phẩy) và tìm theo mã/tiêu đề bằng `q`.
+   * `statusCounts` đếm theo từ khoá nhưng không theo `status`, để mọi tab đều có số.
+   */
   // Khai báo trước ':id' để "me" không bị ParseUuidPipe bắt.
   @Get('me')
   @Roles(Role.CUSTOMER)
   @ApiErrorResponses(400, 401, 403)
-  listMine(@CurrentUser() user: AuthUser, @Query() query: PageQuery): Promise<TicketPageDto> {
+  listMine(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListMyTicketsQuery,
+  ): Promise<CountedTicketPageDto> {
     return this.ticketsService.listMine(user, query);
   }
 
-  /** Hàng chờ ticket (nhân viên hỗ trợ), ticket có tin mới nhất lên trước */
+  /**
+   * Hàng chờ ticket (nhân viên hỗ trợ), ticket có tin mới nhất lên trước
+   *
+   * Lọc theo `status`, `category`; tìm bằng `q` (mã ticket, tiêu đề, mã đơn, tên/email khách).
+   * `statusCounts` áp `category` và `q` nhưng không áp `status`.
+   */
   @Get()
   @Roles(Role.SUPPORT, Role.ADMIN)
   @ApiErrorResponses(400, 401, 403)
-  list(@CurrentUser() user: AuthUser, @Query() query: ListTicketsQuery): Promise<TicketPageDto> {
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListTicketsQuery,
+  ): Promise<CountedTicketPageDto> {
     return this.ticketsService.list(user, query);
   }
 

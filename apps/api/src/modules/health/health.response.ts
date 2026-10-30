@@ -1,5 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+export class SystemVersionDto {
+  /** Phiên bản bản build (APP_VERSION); `dev` khi chưa đặt. */
+  version!: string;
+  /** Commit của bản build (GIT_COMMIT); `unknown` khi chưa đặt. */
+  commit!: string;
+  /** Môi trường chạy (NODE_ENV). */
+  environment!: string;
+  /** Phiên bản Node.js. */
+  nodeVersion!: string;
+}
+
 export class LivenessDto {
   @ApiProperty({ enum: ['ok'] })
   status!: 'ok';

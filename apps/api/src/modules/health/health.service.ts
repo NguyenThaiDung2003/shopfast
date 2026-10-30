@@ -4,7 +4,7 @@ import { PrismaHealthIndicator } from '@nestjs/terminus';
 import { AppException } from '../../common/exceptions/app.exception';
 import type { EnvironmentVariables } from '../../config/env.validation';
 import { PrismaService } from '../../database/prisma.service';
-import { DependencyCheckDto, LivenessDto, ReadinessDto } from './health.response';
+import { DependencyCheckDto, LivenessDto, ReadinessDto, SystemVersionDto } from './health.response';
 import { RedisHealthIndicator } from './redis.health';
 import { ShutdownService } from './shutdown.service';
 
@@ -25,6 +25,7 @@ import { ShutdownService } from './shutdown.service';
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
   private readonly timeoutMs: number;
+  private readonly versionInfo: SystemVersionDto;
 
   constructor(
     private readonly prismaIndicator: PrismaHealthIndicator,
@@ -34,6 +35,17 @@ export class HealthService {
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.timeoutMs = config.get('HEALTH_CHECK_TIMEOUT_MS', { infer: true });
+    this.versionInfo = {
+      version: config.get('APP_VERSION', { infer: true }),
+      commit: config.get('GIT_COMMIT', { infer: true }),
+      environment: config.get('NODE_ENV', { infer: true }),
+      nodeVersion: process.version,
+    };
+  }
+
+  /** Thông tin bản build đang chạy (trang "Giám sát hệ thống"). */
+  version(): SystemVersionDto {
+    return this.versionInfo;
   }
 
   /** Tiến trình còn sống: không chạm phụ thuộc nào, kể cả khi đang tắt. */

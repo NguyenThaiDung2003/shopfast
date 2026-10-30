@@ -15,11 +15,21 @@ export interface TabsProps<V extends string> {
   onChange: (value: V) => void;
   /** Nhãn cho trình đọc màn hình. */
   label: string;
+  /** `underline`: tab gạch chân ("Đơn hàng của tôi"); `segmented`: nút trong khay ("Hỗ trợ"). */
+  variant?: 'underline' | 'segmented';
   className?: string;
 }
 
-/** Tab gạch chân có số đếm (màn "Đơn hàng của tôi"). Điều khiển bằng mũi tên trái/phải, Home/End. */
-export function Tabs<V extends string>({ items, value, onChange, label, className }: TabsProps<V>) {
+/** Tab có số đếm (màn "Đơn hàng của tôi", "Hỗ trợ"). Điều khiển bằng mũi tên trái/phải, Home/End. */
+export function Tabs<V extends string>({
+  items,
+  value,
+  onChange,
+  label,
+  variant = 'underline',
+  className,
+}: TabsProps<V>) {
+  const segmented = variant === 'segmented';
   const baseId = useId();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -48,7 +58,13 @@ export function Tabs<V extends string>({ items, value, onChange, label, classNam
     <div
       role="tablist"
       aria-label={label}
-      className={cn('flex overflow-x-auto border-b border-surface-container-high', className)}
+      className={cn(
+        'flex overflow-x-auto overflow-y-hidden',
+        segmented
+          ? 'gap-space-xs rounded-lg bg-surface-container-low p-space-xs'
+          : 'border-b border-surface-container-high',
+        className,
+      )}
     >
       {items.map((item, index) => {
         const selected = item.value === value;
@@ -67,12 +83,22 @@ export function Tabs<V extends string>({ items, value, onChange, label, classNam
             onClick={() => onChange(item.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={cn(
-              '-mb-px flex shrink-0 items-center gap-space-sm whitespace-nowrap border-b-2 px-space-lg py-space-md text-body-lg transition-colors',
+              'flex shrink-0 items-center gap-space-sm whitespace-nowrap transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
               'disabled:cursor-not-allowed disabled:opacity-40',
-              selected
-                ? 'border-primary font-semibold text-primary'
-                : 'border-transparent text-on-surface-variant hover:text-on-surface',
+              segmented
+                ? cn(
+                    'flex-1 justify-center rounded-md px-space-sm py-1.5 text-label-md',
+                    selected
+                      ? 'bg-surface-container-lowest font-bold text-primary shadow-card'
+                      : 'font-medium text-on-surface-variant hover:text-on-surface',
+                  )
+                : cn(
+                    '-mb-px border-b-2 px-space-lg py-space-md text-body-lg',
+                    selected
+                      ? 'border-primary font-semibold text-primary'
+                      : 'border-transparent text-on-surface-variant hover:text-on-surface',
+                  ),
             )}
           >
             {item.label}

@@ -13,6 +13,11 @@ const orderDetailSelect = {
   totalAmount: true,
   paidAt: true,
   createdAt: true,
+  recipientName: true,
+  recipientPhone: true,
+  shippingAddress: true,
+  shippingNote: true,
+  user: { select: { id: true, fullName: true, email: true } },
   items: {
     select: {
       productId: true,
@@ -35,6 +40,24 @@ const orderDetailSelect = {
 } satisfies Prisma.OrderSelect;
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderDetailSelect }>;
+
+/** Bộ lọc lịch sử đơn của khách. */
+/** Thông tin nhận hàng lúc đặt đơn. */
+export interface ShippingInfo {
+  recipientName: string;
+  phone: string;
+  address: string;
+  note?: string;
+}
+
+export interface OrderListFilter {
+  statuses?: OrderStatus[];
+  /** Mã đơn hoặc tên sản phẩm (không phân biệt hoa thường). */
+  q?: string;
+}
+
+/** Số đơn theo từng trạng thái (trạng thái không có đơn = 0). */
+export type OrderStatusCounts = Record<OrderStatus, number>;
 
 export interface StatusChange {
   orderId: string;
@@ -100,6 +123,7 @@ export class OrdersRepository {
     userId: string,
     lines: CheckoutLine[],
     idempotencyKey?: string,
+    shipping?: ShippingInfo,
   ): Promise<CreateOrderResult> {
     const sorted = [...lines].sort((a, b) => a.productId - b.productId);
     const productIds = sorted.map((l) => l.productId);
@@ -107,7 +131,15 @@ export class OrdersRepository {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const { id: orderId } = await tx.order.create({
-          data: { userId, totalAmount: 0, idempotencyKey },
+          data: {
+            userId,
+            totalAmount: 0,
+            idempotencyKey,
+            recipientName: shipping?.recipientName,
+            recipientPhone: shipping?.phone,
+            shippingAddress: shipping?.address,
+            shippingNote: shipping?.note || null,
+          },
           select: { id: true },
         });
         await tx.orderStatusHistory.create({
@@ -247,13 +279,60 @@ export class OrdersRepository {
     return this.prisma.order.findUnique({ where: { code }, select: orderDetailSelect });
   }
 
+  /**
+   * Lịch sử đơn của khách. `statusCounts` đếm theo từng trạng thái với cùng từ khoá `q` nhưng
+   * KHÔNG áp bộ lọc trạng thái – để mọi tab đều hiện đúng số đơn.
+   */
   async findPageByUser(
     userId: string,
+    filter: OrderListFilter,
     skip: number,
     take: number,
-  ): Promise<{ items: OrderRecord[]; total: number }> {
-    const where: Prisma.OrderWhereInput = { userId };
-    const [items, total] = await this.prisma.$transaction([
+  ): Promise<{ items: OrderRecord[]; total: number; statusCounts: OrderStatusCounts }> {
+    const base: Prisma.OrderWhereInput = { userId };
+    if (filter.q) {
+      base.OR = [
+        { code: { contains: filter.q, mode: 'insensitive' } },
+        { items: { some: { product: { name: { contains: filter.q, mode: 'insensitive' } } } } },
+      ];
+    }
+    return this.findCountedPage(base, filter, skip, take);
+  }
+
+  /** Danh sách đơn cho nhân viên: `q` tìm thêm theo tên/email khách. */
+  async findPage(
+    filter: OrderListFilter,
+    skip: number,
+    take: number,
+  ): Promise<{ items: OrderRecord[]; total: number; statusCounts: OrderStatusCounts }> {
+    const base: Prisma.OrderWhereInput = {};
+    if (filter.q) {
+      const contains = { contains: filter.q, mode: 'insensitive' } as const;
+      base.OR = [
+        { code: contains },
+        { items: { some: { product: { name: contains } } } },
+        { user: { fullName: contains } },
+        { user: { email: contains } },
+      ];
+    }
+    return this.findCountedPage(base, filter, skip, take);
+  }
+
+  /**
+   * Trang đơn + số đơn theo trạng thái. `base` là điều kiện chung (chủ đơn, từ khoá); số đếm
+   * áp `base` nhưng không áp bộ lọc trạng thái để mọi tab đều có số.
+   */
+  private async findCountedPage(
+    base: Prisma.OrderWhereInput,
+    filter: OrderListFilter,
+    skip: number,
+    take: number,
+  ): Promise<{ items: OrderRecord[]; total: number; statusCounts: OrderStatusCounts }> {
+    const where: Prisma.OrderWhereInput = filter.statuses?.length
+      ? { ...base, status: { in: filter.statuses } }
+      : base;
+
+    const [items, total, groups] = await this.prisma.$transaction([
       this.prisma.order.findMany({
         where,
         select: orderDetailSelect,
@@ -262,7 +341,21 @@ export class OrdersRepository {
         take,
       }),
       this.prisma.order.count({ where }),
+      this.prisma.order.groupBy({
+        by: ['status'],
+        where: base,
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
     ]);
-    return { items, total };
+
+    const statusCounts = Object.fromEntries(
+      Object.values(OrderStatus).map((status) => [status, 0]),
+    ) as OrderStatusCounts;
+    for (const group of groups) {
+      const count = group._count;
+      statusCounts[group.status] = typeof count === 'object' && count ? (count._all ?? 0) : 0;
+    }
+    return { items, total, statusCounts };
   }
 }

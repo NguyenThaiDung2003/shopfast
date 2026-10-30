@@ -61,3 +61,18 @@ export class TicketPageDto {
   items!: TicketDto[];
   meta!: PageMetaDto;
 }
+
+/** Số ticket theo trạng thái (áp từ khoá và bộ lọc khác, không áp bộ lọc trạng thái). */
+export class TicketStatusCountsDto {
+  /** Đang chờ nhân viên trả lời. */
+  OPEN!: number;
+  /** Nhân viên đã trả lời, chờ khách. */
+  ANSWERED!: number;
+  /** Đã đóng. */
+  CLOSED!: number;
+}
+
+export class CountedTicketPageDto extends TicketPageDto {
+  /** Số ticket theo trạng thái, để hiện số trên tab. */
+  statusCounts!: TicketStatusCountsDto;
+}

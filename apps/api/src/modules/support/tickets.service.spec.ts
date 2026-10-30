@@ -40,8 +40,16 @@ function setup() {
     findById: jest.fn().mockResolvedValue(ticket),
     findByIdempotencyKey: jest.fn().mockResolvedValue(null),
     orderBelongsTo: jest.fn().mockResolvedValue(true),
-    findPageByCustomer: jest.fn().mockResolvedValue({ items: [ticket], total: 1 }),
-    findPage: jest.fn().mockResolvedValue({ items: [ticket], total: 1 }),
+    findPageByCustomer: jest.fn().mockResolvedValue({
+      items: [ticket],
+      total: 1,
+      statusCounts: { OPEN: 1, ANSWERED: 0, CLOSED: 2 },
+    }),
+    findPage: jest.fn().mockResolvedValue({
+      items: [ticket],
+      total: 1,
+      statusCounts: { OPEN: 1, ANSWERED: 0, CLOSED: 0 },
+    }),
     addMessage: jest.fn().mockResolvedValue({ status: 'added', ticket }),
     update: jest.fn().mockResolvedValue(ticket),
   };
@@ -184,19 +192,35 @@ describe('TicketsService.addMessage', () => {
 describe('TicketsService – danh sách và cập nhật', () => {
   it('listMine theo khách; list theo bộ lọc', async () => {
     const { service, repository } = setup();
-    await service.listMine(customer, { page: 1, limit: 10 });
-    await service.list(support, {
+    const mine = await service.listMine(customer, {
+      page: 2,
+      limit: 10,
+      status: [TicketStatus.OPEN, TicketStatus.ANSWERED],
+      q: 'TK-0001',
+    });
+    const queue = await service.list(support, {
       page: 2,
       limit: 5,
       status: TicketStatus.OPEN,
       category: TicketCategory.VAN_CHUYEN,
+      q: 'Minh',
     });
-    expect(repository.findPageByCustomer).toHaveBeenCalledWith(customer.id, 0, 10);
+    expect(repository.findPageByCustomer).toHaveBeenCalledWith(
+      customer.id,
+      { statuses: [TicketStatus.OPEN, TicketStatus.ANSWERED], q: 'TK-0001' },
+      10,
+      10,
+    );
+    expect(mine.statusCounts).toEqual({ OPEN: 1, ANSWERED: 0, CLOSED: 2 });
+    expect(mine.meta).toMatchObject({ page: 2, total: 1 });
+    expect(mine.items[0]).not.toHaveProperty('customer');
     expect(repository.findPage).toHaveBeenCalledWith(
-      { status: TicketStatus.OPEN, category: TicketCategory.VAN_CHUYEN },
+      { status: TicketStatus.OPEN, category: TicketCategory.VAN_CHUYEN, q: 'Minh' },
       5,
       5,
     );
+    expect(queue.statusCounts).toEqual({ OPEN: 1, ANSWERED: 0, CLOSED: 0 });
+    expect(queue.items[0]).toHaveProperty('customer');
   });
 
   it('update cần ít nhất một trường; không tồn tại → 404', async () => {

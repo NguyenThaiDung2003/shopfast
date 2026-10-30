@@ -2,6 +2,9 @@ import * as Joi from 'joi';
 
 export interface EnvironmentVariables {
   NODE_ENV: 'development' | 'test' | 'production';
+  /** Phiên bản và commit của bản build, hiện ở trang "Giám sát hệ thống". */
+  APP_VERSION: string;
+  GIT_COMMIT: string;
   PORT: number;
   DATABASE_URL: string;
   REDIS_URL: string;
@@ -22,6 +25,8 @@ export interface EnvironmentVariables {
   CACHE_LIST_TTL_SECONDS: number;
   /** TTL cho kết quả "không tồn tại" (chống dò id). */
   CACHE_NEGATIVE_TTL_SECONDS: number;
+  /** Tồn kho dưới ngưỡng này (và > 0) là "sắp hết" ở trang tồn kho. */
+  LOW_STOCK_THRESHOLD: number;
   /** Giá trị `trust proxy` của Express: số proxy (Nginx) đứng trước API (F03, ADR-0008). */
   TRUST_PROXY: string;
   RATE_LIMIT_ENABLED: boolean;
@@ -84,6 +89,8 @@ const RATE_LIMIT_PATTERN = /^[1-9]\d*\/[1-9]\d*$/;
 // Ứng dụng dừng ngay khi khởi động nếu thiếu hoặc sai biến môi trường (fail-fast).
 export const envValidationSchema = Joi.object<EnvironmentVariables>({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  APP_VERSION: Joi.string().trim().max(50).default('dev'),
+  GIT_COMMIT: Joi.string().trim().max(50).default('unknown'),
   PORT: Joi.number().port().default(3000),
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgresql', 'postgres'] })
@@ -105,6 +112,7 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   CACHE_PRODUCT_TTL_SECONDS: Joi.number().integer().min(1).max(86_400).default(300),
   CACHE_LIST_TTL_SECONDS: Joi.number().integer().min(1).max(86_400).default(60),
   CACHE_NEGATIVE_TTL_SECONDS: Joi.number().integer().min(1).max(3600).default(30),
+  LOW_STOCK_THRESHOLD: Joi.number().integer().min(1).max(100_000).default(5),
   // true | false | số hop | danh sách IP/CIDR (cú pháp của Express).
   TRUST_PROXY: Joi.string()
     .pattern(

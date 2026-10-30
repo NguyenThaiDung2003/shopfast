@@ -22,6 +22,8 @@ export interface TableProps<T> {
   onRowClick?: (row: T) => void;
   /** Dòng đang chọn/nổi bật. */
   isRowActive?: (row: T) => boolean;
+  /** Class thêm cho từng dòng (ví dụ tô nền cảnh báo hàng sắp hết). */
+  rowClassName?: (row: T) => string | undefined;
   caption?: string;
   className?: string;
 }
@@ -37,6 +39,7 @@ export function Table<T>({
   empty,
   onRowClick,
   isRowActive,
+  rowClassName,
   caption,
   className,
 }: TableProps<T>) {
@@ -72,6 +75,7 @@ export function Table<T>({
                   'border-b border-surface-container-high/70 transition-colors last:border-b-0',
                   onRowClick && 'cursor-pointer',
                   isRowActive?.(row) ? 'bg-primary-fixed/40' : 'hover:bg-surface-container-low',
+                  rowClassName?.(row),
                 )}
               >
                 {columns.map((column) => (

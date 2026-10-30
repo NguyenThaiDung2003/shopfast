@@ -23,6 +23,8 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** `false` cho endpoint công khai không cần gắn token. Mặc định true. */
   auth?: boolean;
+  /** Endpoint hạ tầng nằm ngoài `/api` (`/health`, ADR-0012). */
+  root?: boolean;
 }
 
 // ---- Phiên hết hạn -------------------------------------------------------------------------
@@ -84,10 +86,23 @@ async function doRefresh(): Promise<RefreshResult> {
   return 'expired';
 }
 
+/**
+ * Access token còn hạn cho kênh ngoài HTTP (Socket.IO handshake, mỗi lần nối lại): refresh trước
+ * nếu sắp hết hạn. Trả null khi chưa đăng nhập hoặc phiên đã hết.
+ */
+export async function getFreshAccessToken(): Promise<string | null> {
+  const session = sessionStore.getSnapshot();
+  if (session && session.user.expiresAt - Date.now() < REFRESH_LEEWAY_MS) {
+    await refreshSession();
+  }
+  return sessionStore.getSnapshot()?.accessToken ?? null;
+}
+
 // ---- Request -------------------------------------------------------------------------------
 
-function buildUrl(path: string, query?: Record<string, QueryValue>): string {
-  const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+function buildUrl(path: string, query?: Record<string, QueryValue>, root = false): string {
+  const base = root ? API_BASE_URL.replace(/\/api$/, '') : API_BASE_URL;
+  const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
   if (!query) return url;
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -139,7 +154,7 @@ async function send(path: string, options: RequestOptions, token: string | undef
   if (token) headers.Authorization = `Bearer ${token}`;
 
   try {
-    return await fetch(buildUrl(path, options.query), {
+    return await fetch(buildUrl(path, options.query, options.root), {
       method: options.method ?? 'GET',
       headers,
       body,

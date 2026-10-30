@@ -34,7 +34,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <nav
         aria-label="Điều hướng quản trị"
-        className="mt-space-xs flex flex-1 flex-col gap-1 px-space-sm"
+        className="mt-space-xs flex flex-1 flex-col gap-space-xs px-space-sm"
       >
         {items.map((item) => (
           <NavLink
@@ -45,12 +45,12 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               cn(
                 'flex items-center gap-space-sm rounded-lg px-space-md py-2.5 transition-colors',
                 isActive
-                  ? 'bg-primary-container text-title-sm text-on-primary shadow-sm'
+                  ? 'bg-primary-container text-title-sm text-on-primary shadow-card'
                   : 'text-body-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
               )
             }
           >
-            <Icon name={item.icon} className="text-[20px]" />
+            <Icon name={item.icon} className="text-xl" />
             <span>{item.label}</span>
           </NavLink>
         ))}
@@ -59,7 +59,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="bg-surface-container p-space-md">
         <NavLink
           to="/"
-          className="flex items-center gap-space-sm rounded-lg px-space-md py-2 text-body-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+          className="flex items-center gap-space-sm rounded-lg px-space-md py-space-sm text-body-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
         >
           <Icon name="storefront" className="text-lg" />
           Xem cửa hàng

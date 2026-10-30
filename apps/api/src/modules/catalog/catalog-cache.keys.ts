@@ -7,6 +7,9 @@ export const CATALOG_VERSION_KEY = 'cache:products:ver';
 export const productVersionKey = (id: number) => `cache:product:${id}:ver`;
 export const productKeyPrefix = (id: number) => `cache:product:${id}:v`;
 export const productKey = (id: number, version: string) => `${productKeyPrefix(id)}${version}`;
+// Danh mục/thương hiệu kèm số sản phẩm: theo version chung của catalog.
+export const categoriesKey = (version: string) => `cache:categories:v${version}`;
+export const brandsKey = (version: string) => `cache:brands:v${version}`;
 export const listKey = (version: string, hash: string) => `cache:products:v${version}:${hash}`;
 
 /**

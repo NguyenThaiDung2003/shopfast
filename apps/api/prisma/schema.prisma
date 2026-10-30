@@ -72,19 +72,23 @@ model Brand {
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  sku         String   @unique
-  name        String
-  slug        String   @unique
-  description String?
+  id             Int      @id @default(autoincrement())
+  sku            String   @unique
+  name           String
+  slug           String   @unique
+  description    String?
   /// Giá bán, đơn vị đồng (VND), số nguyên. CHECK price >= 0 trong migration.
-  price       Int
+  price          Int
   /// Tồn kho thực tế. CHECK stock >= 0 trong migration – chặn bán vượt ở tầng DB.
-  stock       Int      @default(0)
-  categoryId  Int      @map("category_id")
-  brandId     Int      @map("brand_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  stock          Int      @default(0)
+  /// Đường dẫn ảnh; null = chưa có ảnh.
+  imageUrl       String?  @map("image_url")
+  /// Giá gốc (VND) để hiện giảm giá; API chỉ trả khi lớn hơn price.
+  compareAtPrice Int?     @map("compare_at_price")
+  categoryId     Int      @map("category_id")
+  brandId        Int      @map("brand_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   category   Category    @relation(fields: [categoryId], references: [id])
   brand      Brand       @relation(fields: [brandId], references: [id])
@@ -100,18 +104,23 @@ model Product {
 }
 
 model Order {
-  id             String      @id @default(uuid()) @db.Uuid
+  id              String      @id @default(uuid()) @db.Uuid
   /// Mã đơn hiển thị cho khách, ví dụ SF-000001. Sinh từ sequence order_code_seq (migration cart_and_order).
-  code           String      @unique @default(dbgenerated("('SF-'::text || lpad((nextval('order_code_seq'::regclass))::text, 6, '0'::text))"))
-  userId         String      @map("user_id") @db.Uuid
-  status         OrderStatus @default(PENDING_PAYMENT)
+  code            String      @unique @default(dbgenerated("('SF-'::text || lpad((nextval('order_code_seq'::regclass))::text, 6, '0'::text))"))
+  userId          String      @map("user_id") @db.Uuid
+  status          OrderStatus @default(PENDING_PAYMENT)
   /// Tổng tiền, đơn vị đồng (VND).
-  totalAmount    Int         @map("total_amount")
-  paidAt         DateTime?   @map("paid_at")
+  totalAmount     Int         @map("total_amount")
+  paidAt          DateTime?   @map("paid_at")
   /// Header Idempotency-Key của request tạo đơn; unique theo user (ADR-0005).
-  idempotencyKey String?     @map("idempotency_key")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  idempotencyKey  String?     @map("idempotency_key")
+  /// Thông tin nhận hàng; null ở đơn tạo trước khi có bước thanh toán.
+  recipientName   String?     @map("recipient_name")
+  recipientPhone  String?     @map("recipient_phone")
+  shippingAddress String?     @map("shipping_address")
+  shippingNote    String?     @map("shipping_note")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
 
   user           User                 @relation(fields: [userId], references: [id])
   items          OrderItem[]

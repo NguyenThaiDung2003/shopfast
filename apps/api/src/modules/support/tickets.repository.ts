@@ -49,9 +49,34 @@ export type CreateTicketResult =
 export type AddMessageResult =
   { status: 'added'; ticket: TicketRecord } | { status: 'closed' } | { status: 'not_found' };
 
+/** Bộ lọc "Ticket của tôi". */
+export interface MyTicketFilter {
+  statuses?: TicketStatus[];
+  /** Tìm theo mã ticket hoặc tiêu đề. */
+  q?: string;
+}
+
+export type TicketStatusCounts = Record<TicketStatus, number>;
+
 export interface TicketFilter {
   status?: TicketStatus;
   category?: TicketCategory;
+  /** Tìm theo mã ticket, tiêu đề, mã đơn, tên/email khách. */
+  q?: string;
+}
+
+/** groupBy status → đủ mọi trạng thái (thiếu = 0). */
+function toStatusCounts(
+  groups: Array<{ status: TicketStatus; _count?: true | { _all?: number } }>,
+): TicketStatusCounts {
+  const counts = Object.fromEntries(
+    Object.values(TicketStatus).map((status) => [status, 0]),
+  ) as TicketStatusCounts;
+  for (const group of groups) {
+    const count = group._count;
+    counts[group.status] = typeof count === 'object' && count ? (count._all ?? 0) : 0;
+  }
+  return counts;
 }
 
 /** Dữ liệu tối thiểu để phân loại: tiêu đề + tin đầu tiên. */
@@ -117,11 +142,22 @@ export class TicketsRepository {
 
   async findPageByCustomer(
     customerId: string,
+    filter: MyTicketFilter,
     skip: number,
     take: number,
-  ): Promise<{ items: TicketSummaryRecord[]; total: number }> {
-    const where = { customerId } satisfies Prisma.TicketWhereInput;
-    const [items, total] = await this.prisma.$transaction([
+  ): Promise<{ items: TicketSummaryRecord[]; total: number; statusCounts: TicketStatusCounts }> {
+    const base: Prisma.TicketWhereInput = { customerId };
+    if (filter.q) {
+      base.OR = [
+        { code: { contains: filter.q, mode: 'insensitive' } },
+        { subject: { contains: filter.q, mode: 'insensitive' } },
+      ];
+    }
+    const where: Prisma.TicketWhereInput = filter.statuses?.length
+      ? { ...base, status: { in: filter.statuses } }
+      : base;
+
+    const [items, total, groups] = await this.prisma.$transaction([
       this.prisma.ticket.findMany({
         where,
         select: ticketSummarySelect,
@@ -130,8 +166,15 @@ export class TicketsRepository {
         take,
       }),
       this.prisma.ticket.count({ where }),
+      this.prisma.ticket.groupBy({
+        by: ['status'],
+        where: base,
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
     ]);
-    return { items, total };
+
+    return { items, total, statusCounts: toStatusCounts(groups) };
   }
 
   /** Hàng chờ của nhân viên: ticket có tin mới nhất lên trước. */
@@ -139,12 +182,23 @@ export class TicketsRepository {
     filter: TicketFilter,
     skip: number,
     take: number,
-  ): Promise<{ items: TicketSummaryRecord[]; total: number }> {
-    const where = {
-      ...(filter.status && { status: filter.status }),
-      ...(filter.category && { category: filter.category }),
-    } satisfies Prisma.TicketWhereInput;
-    const [items, total] = await this.prisma.$transaction([
+  ): Promise<{ items: TicketSummaryRecord[]; total: number; statusCounts: TicketStatusCounts }> {
+    const base: Prisma.TicketWhereInput = filter.category ? { category: filter.category } : {};
+    if (filter.q) {
+      const contains = { contains: filter.q, mode: 'insensitive' } as const;
+      base.OR = [
+        { code: contains },
+        { subject: contains },
+        { order: { code: contains } },
+        { customer: { fullName: contains } },
+        { customer: { email: contains } },
+      ];
+    }
+    const where: Prisma.TicketWhereInput = filter.status
+      ? { ...base, status: filter.status }
+      : base;
+
+    const [items, total, groups] = await this.prisma.$transaction([
       this.prisma.ticket.findMany({
         where,
         select: ticketSummarySelect,
@@ -153,8 +207,14 @@ export class TicketsRepository {
         take,
       }),
       this.prisma.ticket.count({ where }),
+      this.prisma.ticket.groupBy({
+        by: ['status'],
+        where: base,
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
     ]);
-    return { items, total };
+    return { items, total, statusCounts: toStatusCounts(groups) };
   }
 
   /**

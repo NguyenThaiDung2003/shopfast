@@ -2,11 +2,11 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Role, TicketStatus } from '@prisma/client';
 import { AppException } from '../../common/exceptions/app.exception';
-import { Page, toPage } from '../../common/pagination';
+import { toPage } from '../../common/pagination';
 import type { AuthUser } from '../auth/auth.types';
 import { CreateTicketDto } from './dto/create-ticket.dto';
-import { ListTicketsQuery, PageQuery } from './dto/list-tickets.query';
-import { TicketDetailDto, TicketDto } from './dto/ticket.response';
+import { ListMyTicketsQuery, ListTicketsQuery } from './dto/list-tickets.query';
+import { CountedTicketPageDto, TicketDetailDto, TicketDto } from './dto/ticket.response';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TICKET_CREATED, TicketCreatedEvent } from './events/ticket-created.event';
 import { TicketRecord, TicketsRepository, TicketSummaryRecord } from './tickets.repository';
@@ -96,34 +96,41 @@ export class TicketsService {
     return { ticket: toTicketDetail(result.ticket, customer), replayed: false };
   }
 
-  async listMine(customer: AuthUser, query: PageQuery): Promise<Page<TicketDto>> {
-    const { page, limit } = query;
-    const { items, total } = await this.ticketsRepository.findPageByCustomer(
+  async listMine(customer: AuthUser, query: ListMyTicketsQuery): Promise<CountedTicketPageDto> {
+    const { page, limit, status, q } = query;
+    const { items, total, statusCounts } = await this.ticketsRepository.findPageByCustomer(
       customer.id,
+      { statuses: status, q },
       (page - 1) * limit,
       limit,
     );
-    return toPage(
-      items.map((t) => toTicketView(t, customer)),
-      total,
-      page,
-      limit,
-    );
+    return {
+      ...toPage(
+        items.map((t) => toTicketView(t, customer)),
+        total,
+        page,
+        limit,
+      ),
+      statusCounts,
+    };
   }
 
-  async list(staff: AuthUser, query: ListTicketsQuery): Promise<Page<TicketDto>> {
-    const { page, limit, status, category } = query;
-    const { items, total } = await this.ticketsRepository.findPage(
-      { status, category },
+  async list(staff: AuthUser, query: ListTicketsQuery): Promise<CountedTicketPageDto> {
+    const { page, limit, status, category, q } = query;
+    const { items, total, statusCounts } = await this.ticketsRepository.findPage(
+      { status, category, q },
       (page - 1) * limit,
       limit,
     );
-    return toPage(
-      items.map((t) => toTicketView(t, staff)),
-      total,
-      page,
-      limit,
-    );
+    return {
+      ...toPage(
+        items.map((t) => toTicketView(t, staff)),
+        total,
+        page,
+        limit,
+      ),
+      statusCounts,
+    };
   }
 
   /** Chủ ticket hoặc nhân viên hỗ trợ; người khác nhận 404 (không lộ ticket có tồn tại hay không). */

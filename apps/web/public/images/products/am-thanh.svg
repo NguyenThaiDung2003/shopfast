@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Âm thanh">
+  <rect width="400" height="400" fill="#dde1ff"/>
+  <circle cx="90" cy="310" r="70" fill="#b8c4ff"/>
+  <path d="M90 230a110 110 0 0 1 220 0" fill="none" stroke="#00288e" stroke-width="20" stroke-linecap="round"/>
+  <rect x="70" y="220" width="56" height="100" rx="20" fill="#fd761a"/>
+  <rect x="274" y="220" width="56" height="100" rx="20" fill="#fd761a"/>
+</svg>

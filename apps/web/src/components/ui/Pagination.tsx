@@ -82,7 +82,7 @@ export function Pagination({
                   className={cn(
                     navButton,
                     item === page
-                      ? 'bg-primary text-on-primary shadow-sm'
+                      ? 'bg-primary text-on-primary shadow-card'
                       : 'text-on-surface hover:bg-surface-container-high',
                   )}
                 >

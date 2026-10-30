@@ -74,6 +74,7 @@ const order: OrderDto = {
       lineTotal: 450_000,
     },
   ],
+  shipping: null,
   statusHistory: [],
 };
 

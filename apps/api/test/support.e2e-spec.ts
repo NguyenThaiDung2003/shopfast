@@ -245,6 +245,85 @@ describe('Support tickets & AI assistant (e2e)', () => {
     });
   });
 
+  describe('GET /support/tickets/me – lọc, tìm, số đếm', () => {
+    const open = (subject: string, token = tokens.customer) =>
+      http
+        .post('/api/support/tickets')
+        .set(auth(token))
+        .send({ subject, message: 'Nội dung' })
+        .expect(201)
+        .then((res) => res.body as { id: string; code: string });
+    const mine = (query: string, token = tokens.customer) =>
+      http.get(`/api/support/tickets/me?${query}`).set(auth(token));
+
+    it('lọc nhiều trạng thái, tìm theo tiêu đề/mã (không phân biệt hoa thường), đếm theo từ khoá', async () => {
+      const a = await open('Bộ lọc ZEBRA giao chậm');
+      const b = await open('Bộ lọc ZEBRA hoá đơn VAT');
+      const c = await open('Bộ lọc ZEBRA đổi size');
+      await open('Bộ lọc ZEBRA của người khác', tokens.other);
+      await http
+        .post(`/api/support/tickets/${b.id}/messages`)
+        .set(auth(tokens.support))
+        .send({ body: 'Đã xuất hoá đơn' })
+        .expect(201);
+      await http
+        .patch(`/api/support/tickets/${c.id}`)
+        .set(auth(tokens.support))
+        .send({ status: TicketStatus.CLOSED })
+        .expect(200);
+
+      const active = await mine('q=zebra&status=OPEN,ANSWERED').expect(200);
+      expect(active.body.items.map((t: { id: string }) => t.id).sort()).toEqual(
+        [a.id, b.id].sort(),
+      );
+      expect(active.body.meta.total).toBe(2);
+      // Số đếm áp từ khoá nhưng không áp tab; ticket của khách khác không bị đếm.
+      expect(active.body.statusCounts).toEqual({ OPEN: 1, ANSWERED: 1, CLOSED: 1 });
+
+      const closed = await mine('q=ZEBRA&status=CLOSED').expect(200);
+      expect(closed.body.items.map((t: { id: string }) => t.id)).toEqual([c.id]);
+
+      const byCode = await mine(`q=${a.code.toLowerCase()}`).expect(200);
+      expect(byCode.body.items.map((t: { id: string }) => t.id)).toEqual([a.id]);
+      expect(byCode.body.statusCounts).toEqual({ OPEN: 1, ANSWERED: 0, CLOSED: 0 });
+
+      const other = await mine('q=zebra', tokens.other).expect(200);
+      expect(other.body.meta.total).toBe(1);
+    });
+
+    it('hàng chờ nhân viên: tìm theo mã đơn/tên/email khách, đếm theo từ khoá + nhóm', async () => {
+      const order = await placeOrder();
+      const { body: withOrder } = await createTicket(order.id).expect(201);
+      const queue = (query: string) =>
+        http.get(`/api/support/tickets?${query}`).set(auth(tokens.support)).expect(200);
+
+      const byOrder = await queue(`q=${order.code.toLowerCase()}`);
+      expect(byOrder.body.items.map((t: { id: string }) => t.id)).toEqual([withOrder.id]);
+      expect(byOrder.body.items[0].customer).toMatchObject({ email: 'cus.sup.e2e@shopfast.local' });
+      expect(byOrder.body.statusCounts).toEqual({ OPEN: 1, ANSWERED: 0, CLOSED: 0 });
+
+      // Cả hai khách đều tên "E2E CUSTOMER"; email thì chỉ khớp khách A.
+      type Row = { customer: { email: string } };
+      const emails = (res: { body: { items: Row[] } }) =>
+        new Set(res.body.items.map((t) => t.customer.email));
+      const byName = await queue('q=e2e%20customer&limit=50');
+      expect(emails(byName)).toEqual(
+        new Set(['cus.sup.e2e@shopfast.local', 'other.sup.e2e@shopfast.local']),
+      );
+      const byEmail = await queue('q=CUS.SUP.E2E&limit=50');
+      expect(emails(byEmail)).toEqual(new Set(['cus.sup.e2e@shopfast.local']));
+
+      const closed = await queue('q=CUS.SUP.E2E&status=CLOSED&limit=50');
+      expect(closed.body.meta.total).toBe(closed.body.statusCounts.CLOSED);
+      expect(closed.body.statusCounts).toEqual(byEmail.body.statusCounts);
+    });
+
+    it('status sai hoặc từ khoá quá 100 ký tự → 400', async () => {
+      expect((await mine('status=FOO').expect(400)).body.code).toBe('VALIDATION_FAILED');
+      await mine(`q=${'a'.repeat(101)}`).expect(400);
+    });
+  });
+
   describe('trợ lý AI', () => {
     it('hỏi về đơn → gọi getOrderStatus, trả lời bằng trạng thái thật trong DB', async () => {
       const order = await placeOrder();
@@ -327,6 +406,27 @@ describe('Support tickets & AI assistant (e2e)', () => {
       expect(body.pendingActions).toHaveLength(1);
       return body.pendingActions[0] as { id: string; status: string; orderCode: string };
     }
+
+    it('lọc đề xuất theo ticket; ticketId sai định dạng → 400', async () => {
+      const orderA = await placeOrder();
+      const orderB = await placeOrder();
+      const { body: ticketA } = await createTicket(orderA.id).expect(201);
+      const { body: ticketB } = await createTicket(orderB.id).expect(201);
+      const a = await proposeCancel(ticketA.id, orderA.code);
+      await proposeCancel(ticketB.id, orderB.code);
+
+      const { body } = await http
+        .get(`/api/support/pending-actions?status=PENDING&ticketId=${ticketA.id}`)
+        .set(auth(tokens.support))
+        .expect(200);
+      expect(body.items.map((x: { id: string }) => x.id)).toEqual([a.id]);
+      expect(body.items[0]).toMatchObject({ ticketCode: ticketA.code, orderCode: orderA.code });
+
+      await http
+        .get('/api/support/pending-actions?ticketId=TK-1')
+        .set(auth(tokens.support))
+        .expect(400);
+    });
 
     it('đề xuất huỷ → đơn và tồn kho KHÔNG đổi; từ chối → vẫn không đổi; xác nhận → huỷ + hoàn kho', async () => {
       const order = await placeOrder();

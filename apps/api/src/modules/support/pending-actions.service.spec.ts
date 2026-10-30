@@ -18,6 +18,7 @@ const orderIn = (status: OrderStatus): OrderDto => ({
   paidAt: null,
   createdAt: new Date(),
   items: [],
+  shipping: null,
   statusHistory: [],
 });
 
@@ -289,9 +290,18 @@ describe('PendingActionsService.list / view', () => {
       total: 11,
     });
 
-    const page = await service.list({ page: 2, limit: 10, status: PendingActionStatus.PENDING });
+    const page = await service.list({
+      page: 2,
+      limit: 10,
+      status: PendingActionStatus.PENDING,
+      ticketId: 'tk-1',
+    });
 
-    expect(repository.findPage).toHaveBeenCalledWith(PendingActionStatus.PENDING, 10, 10);
+    expect(repository.findPage).toHaveBeenCalledWith(
+      { status: PendingActionStatus.PENDING, ticketId: 'tk-1' },
+      10,
+      10,
+    );
     expect(page.meta).toEqual({ page: 2, limit: 10, total: 11, totalPages: 2 });
     expect(page.items[0]).toMatchObject({ orderCode: 'SF-000123', ticketCode: 'TK-000007' });
   });

@@ -76,7 +76,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <div className="min-w-0 flex-1">
                 <p className={cn('text-title-sm', tone.title)}>{toast.title}</p>
                 {toast.description && (
-                  <p className="text-body-sm text-on-surface-variant">{toast.description}</p>
+                  <p className="whitespace-pre-line text-body-sm text-on-surface-variant">
+                    {toast.description}
+                  </p>
                 )}
               </div>
               <button

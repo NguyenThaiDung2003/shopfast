@@ -93,3 +93,32 @@ describe('HealthService.live', () => {
     expect(redisIndicator.pingCheck).not.toHaveBeenCalled();
   });
 });
+
+describe('HealthService.version', () => {
+  it('lấy phiên bản, commit, môi trường từ cấu hình', () => {
+    const values: Record<string, unknown> = {
+      HEALTH_CHECK_TIMEOUT_MS: 800,
+      APP_VERSION: '1.2.3',
+      GIT_COMMIT: 'abc1234',
+      NODE_ENV: 'production',
+    };
+    const config = { get: (key: string) => values[key] } as unknown as ConfigService<
+      EnvironmentVariables,
+      true
+    >;
+    const service = new HealthService(
+      {} as unknown as PrismaHealthIndicator,
+      {} as never,
+      {} as unknown as RedisHealthIndicator,
+      {} as unknown as ShutdownService,
+      config,
+    );
+
+    expect(service.version()).toEqual({
+      version: '1.2.3',
+      commit: 'abc1234',
+      environment: 'production',
+      nodeVersion: process.version,
+    });
+  });
+});

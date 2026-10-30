@@ -40,7 +40,9 @@ export function Badge({
     <span
       className={cn(
         'inline-flex items-center gap-space-xs whitespace-nowrap font-semibold',
-        size === 'sm' ? 'px-2 py-0.5 text-label-sm' : 'px-space-md py-1 text-label-md',
+        size === 'sm'
+          ? 'px-space-sm py-0.5 text-label-sm'
+          : 'px-space-md py-space-xs text-label-md',
         pill ? 'rounded-full' : 'rounded',
         TONE[tone],
         className,
@@ -72,7 +74,9 @@ export function OrderStatusBadge({
     <span
       className={cn(
         'inline-flex items-center gap-space-xs whitespace-nowrap rounded-full font-semibold',
-        size === 'sm' ? 'px-2 py-0.5 text-label-sm' : 'px-space-md py-1 text-label-md',
+        size === 'sm'
+          ? 'px-space-sm py-0.5 text-label-sm'
+          : 'px-space-md py-space-xs text-label-md',
         meta.className,
         className,
       )}

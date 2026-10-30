@@ -29,4 +29,18 @@
   .icon-filled {
     font-variation-settings: 'FILL' 1;
   }
+
+  /* Thanh trượt hai đầu: hai <input type="range"> chồng nhau, chỉ phần núm nhận chuột. */
+  .dual-range {
+    @apply pointer-events-none absolute inset-x-0 top-1/2 h-5 w-full -translate-y-1/2 appearance-none bg-transparent;
+  }
+  .dual-range::-webkit-slider-thumb {
+    @apply pointer-events-auto h-5 w-5 cursor-pointer appearance-none rounded-full border-2 border-secondary-container bg-surface-container-lowest shadow-card;
+  }
+  .dual-range::-moz-range-thumb {
+    @apply pointer-events-auto h-5 w-5 cursor-pointer rounded-full border-2 border-secondary-container bg-surface-container-lowest shadow-card;
+  }
+  .dual-range:focus-visible::-webkit-slider-thumb {
+    @apply ring-2 ring-primary ring-offset-2;
+  }
 }

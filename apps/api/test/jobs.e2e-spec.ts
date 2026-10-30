@@ -421,6 +421,21 @@ describe('Background jobs (e2e)', () => {
   });
 
   describe('Bull Board /admin/queues & thống kê', () => {
+    it('GET /api/admin/system/version: chỉ ADMIN; có phiên bản và môi trường', async () => {
+      await http.get('/api/admin/system/version').expect(401);
+      await http.get('/api/admin/system/version').set(auth(tokens.warehouse)).expect(403);
+      const { body } = await http
+        .get('/api/admin/system/version')
+        .set(auth(tokens.admin))
+        .expect(200);
+      expect(body).toEqual({
+        version: expect.any(String),
+        commit: expect.any(String),
+        environment: 'test',
+        nodeVersion: process.version,
+      });
+    });
+
     it('không đăng nhập → 401, customer → 403 (JSON lỗi tiếng Việt chuẩn), admin Bearer → 200', async () => {
       const anonymous = await http.get('/admin/queues').expect(401);
       expect(anonymous.body).toMatchObject({ statusCode: 401, code: 'UNAUTHENTICATED' });

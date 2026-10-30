@@ -3,14 +3,16 @@ import { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../../config/env.validation';
 import { CacheService, TTL_JITTER } from '../cache/cache.service';
 import {
+  brandsKey,
   CATALOG_VERSION_KEY,
+  categoriesKey,
   listKey,
   listQueryHash,
   productKey,
   productKeyPrefix,
   productVersionKey,
 } from './catalog-cache.keys';
-import type { ProductDetail } from './catalog.repository';
+import type { CatalogFacet, ProductDetail } from './catalog.repository';
 import type { ProductPage } from './catalog.service';
 import { ListProductsQuery } from './dto/list-products.query';
 
@@ -50,6 +52,33 @@ export class CatalogCacheService {
         ttlSeconds: this.listTtlSeconds,
         // Bộ lọc không ra sản phẩm nào: cache TTL ngắn như "không tồn tại".
         isEmpty: (page) => page.items.length === 0,
+      },
+      load,
+    );
+  }
+
+  /** Danh mục kèm số sản phẩm; làm mới khi version catalog đổi hoặc hết TTL danh sách. */
+  categories(load: () => Promise<CatalogFacet[]>): Promise<CatalogFacet[]> {
+    return this.cache.getOrLoad(
+      {
+        namespace: 'categories',
+        versionKey: CATALOG_VERSION_KEY,
+        key: categoriesKey,
+        ttlSeconds: this.listTtlSeconds,
+        isEmpty: (rows) => rows.length === 0,
+      },
+      load,
+    );
+  }
+
+  brands(load: () => Promise<CatalogFacet[]>): Promise<CatalogFacet[]> {
+    return this.cache.getOrLoad(
+      {
+        namespace: 'brands',
+        versionKey: CATALOG_VERSION_KEY,
+        key: brandsKey,
+        ttlSeconds: this.listTtlSeconds,
+        isEmpty: (rows) => rows.length === 0,
       },
       load,
     );

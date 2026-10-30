@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Điện thoại">
+  <rect width="400" height="400" fill="#eaedff"/>
+  <circle cx="310" cy="90" r="70" fill="#dde1ff"/>
+  <rect x="130" y="60" width="140" height="280" rx="24" fill="#1e40af"/>
+  <rect x="142" y="84" width="116" height="222" rx="8" fill="#ffdbca"/>
+  <rect x="172" y="70" width="56" height="6" rx="3" fill="#b8c4ff"/>
+  <circle cx="200" cy="322" r="8" fill="#b8c4ff"/>
+</svg>

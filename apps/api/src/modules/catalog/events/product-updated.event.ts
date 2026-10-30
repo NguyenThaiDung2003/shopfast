@@ -11,6 +11,8 @@ export interface FieldChange<T> {
 export interface ProductChangeSet {
   price?: FieldChange<number>;
   stock?: FieldChange<number>;
+  imageUrl?: FieldChange<string | null>;
+  compareAtPrice?: FieldChange<number | null>;
 }
 
 /**

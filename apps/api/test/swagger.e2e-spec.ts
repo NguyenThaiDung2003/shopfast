@@ -34,6 +34,8 @@ describe('Swagger /docs (e2e)', () => {
       '/api/auth/login',
       '/api/products',
       '/api/products/{id}',
+      '/api/categories',
+      '/api/brands',
       '/api/cart',
       '/api/orders',
       '/api/orders/me',

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Gia dụng">
+  <rect width="400" height="400" fill="#f2f3ff"/>
+  <circle cx="310" cy="100" r="60" fill="#85f8c4"/>
+  <rect x="110" y="80" width="180" height="250" rx="20" fill="#1e40af"/>
+  <rect x="110" y="170" width="180" height="8" fill="#dde1ff"/>
+  <rect x="130" y="108" width="10" height="42" rx="5" fill="#dde1ff"/>
+  <rect x="130" y="198" width="10" height="60" rx="5" fill="#dde1ff"/>
+</svg>

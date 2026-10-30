@@ -71,6 +71,10 @@ curl http://localhost:3000/health/live   # liveness: chỉ kiểm tiến trình
 curl "http://localhost:3000/api/products?page=1&limit=5"
 curl "http://localhost:3000/api/products?categoryId=1&minPrice=5000000&maxPrice=20000000&sort=price_asc"
 
+# Danh mục / thương hiệu kèm số sản phẩm (bộ lọc), sắp theo tên tiếng Việt
+curl http://localhost:3000/api/categories
+curl http://localhost:3000/api/brands
+
 # Chi tiết sản phẩm
 curl http://localhost:3000/api/products/1
 
@@ -82,11 +86,12 @@ Danh mục: `1` Điện thoại, `2` Laptop, `3` Phụ kiện, `4` Âm thanh, `5
 
 #### Catalog
 
-| Method | Endpoint            | Quyền            | Mô tả                                                                                                                                                                     |
-| ------ | ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/products`     | công khai        | `page` (1–1000), `limit` (1–100, mặc định 20), `categoryId`, `brandId`, `minPrice`, `maxPrice`, `sort` = `newest` (mặc định) \| `price_asc` \| `price_desc` \| `name_asc` |
-| GET    | `/api/products/:id` | công khai        | Chi tiết sản phẩm                                                                                                                                                         |
-| PATCH  | `/api/products/:id` | ADMIN, WAREHOUSE | Body: `price` (chỉ ADMIN), `stock` (đặt số lượng, kiểm kê) **hoặc** `stockDelta` (+ nhập / − xuất kho). Phát event `product.updated`                                      |
+| Method | Endpoint                  | Quyền            | Mô tả                                                                                                                                                                                                                                               |
+| ------ | ------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/products`           | công khai        | `page` (1–1000), `limit` (1–100, mặc định 20), `categoryId`, `brandId`, `minPrice`, `maxPrice`, `sort` = `newest` (mặc định) \| `price_asc` \| `price_desc` \| `name_asc`                                                                           |
+| GET    | `/api/products/inventory` | WAREHOUSE, ADMIN | Tồn kho đọc thẳng DB: `q`, `categoryId`, `stockLevel`, `sort`, `summary`                                                                                                                                                                            |
+| GET    | `/api/products/:id`       | công khai        | Chi tiết sản phẩm                                                                                                                                                                                                                                   |
+| PATCH  | `/api/products/:id`       | ADMIN, WAREHOUSE | Body: `price`, `compareAtPrice`, `imageUrl` (chỉ ADMIN; `null` để xoá hai trường sau), `stock` (đặt số lượng, kiểm kê; kèm `expectedStock` để lệch → 409 `STOCK_CHANGED`) **hoặc** `stockDelta` (+ nhập / − xuất kho). Phát event `product.updated` |
 
 ```bash
 # Warehouse nhập thêm 20 sản phẩm (TOKEN lấy như phần Xác thực, đăng nhập warehouse01)
@@ -118,16 +123,17 @@ docker compose up -d api   # bật lại
 
 Cơ chế chống bán vượt và chống tạo trùng đơn: [ADR-0005](docs/adr/0005-khoa-ton-kho-khi-dat-hang.md).
 
-| Method | Endpoint                                  | Quyền                              | Mô tả                                                                                                                                                                    |
-| ------ | ----------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/cart`                               | CUSTOMER                           | Giỏ hàng, tạm tính, cờ `insufficientStock` từng dòng                                                                                                                     |
-| POST   | `/api/cart/items`                         | CUSTOMER                           | `{ productId, quantity }` – cộng dồn, tối đa 99/sản phẩm                                                                                                                 |
-| PATCH  | `/api/cart/items/:productId`              | CUSTOMER                           | `{ quantity }` – đặt lại số lượng                                                                                                                                        |
-| DELETE | `/api/cart/items/:productId`, `/api/cart` | CUSTOMER                           | Xoá một dòng / xoá hết                                                                                                                                                   |
-| POST   | `/api/orders`                             | CUSTOMER                           | Tạo đơn từ giỏ (201). Header `Idempotency-Key` tuỳ chọn: gửi lại cùng key → 200 + `Idempotent-Replayed: true`, cùng đơn. Thiếu hàng → 409 `OUT_OF_STOCK` nêu rõ sản phẩm |
-| GET    | `/api/orders/me`                          | CUSTOMER                           | Lịch sử đơn của mình, mới nhất trước (`page`, `limit` ≤ 50)                                                                                                              |
-| GET    | `/api/orders/:id`                         | chủ đơn, SUPPORT, WAREHOUSE, ADMIN | Chi tiết đơn + `statusHistory` (chủ đơn không thấy tên nhân viên)                                                                                                        |
-| PATCH  | `/api/orders/:id/status`                  | WAREHOUSE, ADMIN                   | `{ status, note? }` theo state machine ([ADR-0006](docs/adr/0006-state-machine-don-hang.md)); sai bước → 409. Huỷ thì hoàn kho                                           |
+| Method | Endpoint                                  | Quyền                              | Mô tả                                                                                                                                                                                                                                            |
+| ------ | ----------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/cart`                               | CUSTOMER                           | Giỏ hàng, tạm tính, cờ `insufficientStock` từng dòng                                                                                                                                                                                             |
+| POST   | `/api/cart/items`                         | CUSTOMER                           | `{ productId, quantity }` – cộng dồn, tối đa 99/sản phẩm                                                                                                                                                                                         |
+| PATCH  | `/api/cart/items/:productId`              | CUSTOMER                           | `{ quantity }` – đặt lại số lượng                                                                                                                                                                                                                |
+| DELETE | `/api/cart/items/:productId`, `/api/cart` | CUSTOMER                           | Xoá một dòng / xoá hết                                                                                                                                                                                                                           |
+| POST   | `/api/orders`                             | CUSTOMER                           | Tạo đơn từ giỏ (201). Body tuỳ chọn `{ shipping: { recipientName, phone, address, note? } }`. Header `Idempotency-Key` tuỳ chọn: gửi lại cùng key → 200 + `Idempotent-Replayed: true`, cùng đơn. Thiếu hàng → 409 `OUT_OF_STOCK` nêu rõ sản phẩm |
+| GET    | `/api/orders/me`                          | CUSTOMER                           | Lịch sử đơn của mình, mới nhất trước (`page`, `limit` ≤ 50, `status=PAID,PROCESSING`, `q` = mã đơn/tên sản phẩm); kèm `statusCounts`                                                                                                             |
+| GET    | `/api/orders`                             | WAREHOUSE, ADMIN                   | Danh sách đơn cho kho: lọc `status`, tìm `q`, `statusCounts`, `customer`, `nextStatuses`                                                                                                                                                         |
+| GET    | `/api/orders/:id`                         | chủ đơn, SUPPORT, WAREHOUSE, ADMIN | Chi tiết đơn + `statusHistory` (chủ đơn không thấy tên nhân viên)                                                                                                                                                                                |
+| PATCH  | `/api/orders/:id/status`                  | WAREHOUSE, ADMIN                   | `{ status, note? }` theo state machine ([ADR-0006](docs/adr/0006-state-machine-don-hang.md)); sai bước → 409. Huỷ thì hoàn kho                                                                                                                   |
 
 ```bash
 # Customer (TOKEN của customer01): thêm vào giỏ rồi đặt hàng, an toàn khi bấm hai lần
@@ -216,6 +222,7 @@ Job lỗi tự thử lại (backoff exponential); hết lượt thử thì chuy�
 | Method | Endpoint                    | Quyền | Mô tả                                                                  |
 | ------ | --------------------------- | ----- | ---------------------------------------------------------------------- |
 | GET    | `/api/admin/queues/stats`   | ADMIN | Số job đang chờ / đang chạy / hẹn giờ / hoàn tất / thất bại từng queue |
+| GET    | `/api/admin/system/version` | ADMIN | Phiên bản, commit (`APP_VERSION`, `GIT_COMMIT`), môi trường            |
 | POST   | `/api/admin/queues/session` | ADMIN | Đặt cookie phiên để mở Bull Board trên trình duyệt (204)               |
 | GET    | `/admin/queues`             | ADMIN | Bull Board (ngoài `/api`)                                              |
 
@@ -263,13 +270,13 @@ Khách tạo ticket và nhắn tin; nhân viên hỗ trợ trả lời. Ticket m
 | Method | Endpoint                                   | Quyền                      | Mô tả                                                               |
 | ------ | ------------------------------------------ | -------------------------- | ------------------------------------------------------------------- |
 | POST   | `/api/support/tickets`                     | CUSTOMER                   | Tạo ticket (`subject`, `message`, `orderId?`), có `Idempotency-Key` |
-| GET    | `/api/support/tickets/me`                  | CUSTOMER                   | Ticket của tôi                                                      |
-| GET    | `/api/support/tickets`                     | SUPPORT, ADMIN             | Hàng chờ, lọc `status`, `category`                                  |
+| GET    | `/api/support/tickets/me`                  | CUSTOMER                   | Ticket của tôi; lọc `status=OPEN,ANSWERED`, tìm `q`, `statusCounts` |
+| GET    | `/api/support/tickets`                     | SUPPORT, ADMIN             | Hàng chờ, lọc `status`, `category`, tìm `q`, `statusCounts`         |
 | GET    | `/api/support/tickets/:id`                 | chủ ticket, SUPPORT, ADMIN | Chi tiết + tin nhắn                                                 |
 | POST   | `/api/support/tickets/:id/messages`        | chủ ticket, SUPPORT, ADMIN | Nhắn tin (khách → `OPEN`, nhân viên → `ANSWERED`)                   |
 | PATCH  | `/api/support/tickets/:id`                 | SUPPORT, ADMIN             | Đóng/mở lại, sửa nhóm bằng tay                                      |
 | POST   | `/api/support/tickets/:id/assistant`       | SUPPORT, ADMIN             | Hỏi trợ lý AI (`question`)                                          |
-| GET    | `/api/support/pending-actions`             | SUPPORT, ADMIN             | Đề xuất của trợ lý, lọc `status`                                    |
+| GET    | `/api/support/pending-actions`             | SUPPORT, ADMIN             | Đề xuất của trợ lý, lọc `status`, `ticketId`                        |
 | POST   | `/api/support/pending-actions/:id/confirm` | SUPPORT, ADMIN             | Xác nhận → **lúc này mới** huỷ đơn / tạo yêu cầu đổi trả            |
 | POST   | `/api/support/pending-actions/:id/reject`  | SUPPORT, ADMIN             | Từ chối, không thực thi gì                                          |
 

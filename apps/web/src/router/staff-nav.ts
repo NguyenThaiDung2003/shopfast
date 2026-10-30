@@ -28,12 +28,6 @@ export const STAFF_NAV: readonly StaffNavItem[] = [
     icon: 'support_agent',
     roles: ['SUPPORT', 'ADMIN'],
   },
-  {
-    path: 'cskh/cho-duyet',
-    label: 'Hành động chờ duyệt',
-    icon: 'fact_check',
-    roles: ['SUPPORT', 'ADMIN'],
-  },
   { path: 'he-thong', label: 'Giám sát hệ thống', icon: 'monitoring', roles: ['ADMIN'] },
 ];
 

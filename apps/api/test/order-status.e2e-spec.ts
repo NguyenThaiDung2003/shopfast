@@ -279,6 +279,75 @@ describe('Order status state machine (e2e)', () => {
       expect(other.body.meta.total).toBe(0);
     });
 
+    const mine = (qs: string) => http.get(`/api/orders/me?${qs}`).set(auth(tokens.customer));
+
+    /** Số đơn thật trong DB theo trạng thái (đối chiếu statusCounts). */
+    async function dbCounts(): Promise<Record<OrderStatus, number>> {
+      const groups = await prisma.order.groupBy({
+        by: ['status'],
+        where: { userId: ids.customer },
+        _count: { _all: true },
+      });
+      const counts = Object.fromEntries(Object.values(OrderStatus).map((s) => [s, 0])) as Record<
+        OrderStatus,
+        number
+      >;
+      for (const g of groups) counts[g.status] = g._count._all;
+      return counts;
+    }
+
+    it('lọc theo trạng thái (một hoặc nhóm); statusCounts khớp DB và không bị tab ảnh hưởng', async () => {
+      await setStatus(await placeOrder(), PAID, tokens.admin).expect(200);
+      const paidThenProcessing = await placeOrder();
+      await setStatus(paidThenProcessing, PAID, tokens.admin).expect(200);
+      await setStatus(paidThenProcessing, PROCESSING).expect(200);
+      const expected = await dbCounts();
+
+      const all = await mine('limit=50').expect(200);
+      expect(all.body.statusCounts).toEqual(expected);
+
+      const group = await mine('status=PAID,PROCESSING&limit=50').expect(200);
+      expect(group.body.meta.total).toBe(expected.PAID + expected.PROCESSING);
+      expect(group.body.items.length).toBeGreaterThanOrEqual(2);
+      for (const o of group.body.items) expect([PAID, PROCESSING]).toContain(o.status);
+      expect(group.body.statusCounts).toEqual(expected);
+
+      // Lặp tham số cũng được.
+      const repeated = await mine('status=PAID&status=PENDING_PAYMENT&limit=50').expect(200);
+      expect(repeated.body.meta.total).toBe(expected.PAID + expected.PENDING_PAYMENT);
+    });
+
+    it('q: theo mã đơn (không phân biệt hoa thường) hoặc tên sản phẩm', async () => {
+      const orderId = await placeOrder();
+      const { code } = (await prisma.order.findUniqueOrThrow({ where: { id: orderId } })) as {
+        code: string;
+      };
+
+      const byCode = await mine(`q=${code.toLowerCase()}`).expect(200);
+      expect(byCode.body.items.map((o: { code: string }) => o.code)).toEqual([code]);
+      expect(byCode.body.statusCounts).toMatchObject({ PENDING_PAYMENT: 1, PAID: 0 });
+
+      const total = (await dbCounts()) as Record<string, number>;
+      const sum = Object.values(total).reduce((a, b) => a + b, 0);
+      const byName = await mine('q=c%E1%BB%A9ng%20e2e&limit=1').expect(200); // "cứng e2e"
+      expect(byName.body.meta.total).toBe(sum);
+
+      const none = await mine('q=khong-ton-tai').expect(200);
+      expect(none.body.meta.total).toBe(0);
+      expect(Object.values(none.body.statusCounts)).toEqual([0, 0, 0, 0, 0, 0]);
+
+      // Người khác tìm đúng mã đơn của mình cũng không thấy.
+      const other = await http.get(`/api/orders/me?q=${code}`).set(auth(tokens.other)).expect(200);
+      expect(other.body.meta.total).toBe(0);
+    });
+
+    it('400: status lạ, từ khoá quá 100 ký tự', async () => {
+      const bad = await mine('status=PAID,FOO').expect(400);
+      expect(bad.body.code).toBe('VALIDATION_FAILED');
+      await mine(`q=${'a'.repeat(101)}`).expect(400);
+      await mine(`q=${'a'.repeat(100)}`).expect(200);
+    });
+
     it('400: limit vượt 50; 403: nhân viên', async () => {
       await http.get('/api/orders/me?limit=51').set(auth(tokens.customer)).expect(400);
       await http.get('/api/orders/me').set(auth(tokens.warehouse)).expect(403);
@@ -288,6 +357,57 @@ describe('Order status state machine (e2e)', () => {
       const orderId = await placeOrder();
 
       await http.get(`/api/orders/${orderId}`).set(auth(tokens.other)).expect(404);
+    });
+  });
+
+  describe('GET /orders (nhân viên kho)', () => {
+    const list = (qs: string, token = tokens.warehouse) =>
+      http.get(`/api/orders?${qs}`).set(auth(token));
+
+    it('lọc trạng thái + tìm theo mã đơn/email khách; mỗi đơn có customer và nextStatuses', async () => {
+      const orderId = await placeOrder();
+      await setStatus(orderId, OrderStatus.PAID).expect(200);
+      const { body: order } = await http
+        .get(`/api/orders/${orderId}`)
+        .set(auth(tokens.warehouse))
+        .expect(200);
+      expect(order.nextStatuses).toEqual([OrderStatus.PROCESSING, OrderStatus.CANCELLED]);
+
+      const byCode = await list(`q=${order.code.toLowerCase()}&status=PAID,PROCESSING`).expect(200);
+      expect(byCode.body.items).toHaveLength(1);
+      expect(byCode.body.items[0]).toMatchObject({
+        id: orderId,
+        customer: { id: ids.customer, email: 'cus.status.e2e@shopfast.local' },
+        nextStatuses: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
+      });
+      expect(byCode.body.statusCounts).toMatchObject({ PAID: 1, SHIPPING: 0 });
+
+      // Theo email khách: chỉ đơn của khách đó; số đếm không bị bộ lọc trạng thái ảnh hưởng.
+      const byEmail = await list('q=CUS.STATUS.E2E&status=DELIVERED&limit=50').expect(200);
+      expect(
+        byEmail.body.items.every(
+          (o: { customer: { id: string } }) => o.customer.id === ids.customer,
+        ),
+      ).toBe(true);
+      expect(byEmail.body.meta.total).toBe(byEmail.body.statusCounts.DELIVERED);
+      const mine = await http.get('/api/orders/me?limit=1').set(auth(tokens.customer)).expect(200);
+      expect(byEmail.body.statusCounts).toEqual(mine.body.statusCounts);
+
+      // PATCH trả đơn kèm bước kế tiếp mới.
+      const { body: shipped } = await setStatus(orderId, OrderStatus.PROCESSING).expect(200);
+      expect(shipped.nextStatuses).toEqual([OrderStatus.SHIPPING, OrderStatus.CANCELLED]);
+    });
+
+    it('khách và CSKH không xem được danh sách (403); admin xem được; khách không thấy nextStatuses', async () => {
+      await list('', tokens.customer).expect(403);
+      await list('', tokens.support).expect(403);
+      await list('', tokens.admin).expect(200);
+      await list('status=FOO').expect(400);
+
+      const orderId = await placeOrder();
+      const { body } = await http.get(`/api/orders/${orderId}`).set(auth(tokens.customer));
+      expect(body).not.toHaveProperty('nextStatuses');
+      expect(body).not.toHaveProperty('customer');
     });
   });
 });

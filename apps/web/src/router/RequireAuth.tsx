@@ -23,7 +23,7 @@ export function RequireAuth({ roles, children }: RequireAuthProps) {
     return <Navigate to={`/dang-nhap?next=${encodeURIComponent(next)}`} replace />;
   }
   if (roles && !roles.includes(session.user.role)) {
-    return <ForbiddenPage />;
+    return <ForbiddenPage requiredRoles={roles} />;
   }
   return <>{children}</>;
 }

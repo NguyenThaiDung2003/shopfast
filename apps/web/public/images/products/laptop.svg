@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Laptop">
+  <rect width="400" height="400" fill="#f2f3ff"/>
+  <circle cx="80" cy="90" r="60" fill="#ffdbca"/>
+  <rect x="90" y="110" width="220" height="150" rx="12" fill="#1e40af"/>
+  <rect x="104" y="124" width="192" height="122" rx="4" fill="#dde1ff"/>
+  <path d="M60 268h280l-18 30H78z" fill="#00288e"/>
+</svg>

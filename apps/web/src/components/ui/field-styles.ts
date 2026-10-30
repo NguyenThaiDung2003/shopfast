@@ -6,9 +6,11 @@ export function describedBy(id: string, error: unknown, hint: unknown): string |
   return undefined;
 }
 
-export const controlClass = (invalid: boolean) =>
+/** `multiline`: textarea – không cố định chiều cao. */
+export const controlClass = (invalid: boolean, multiline = false) =>
   cn(
-    'h-11 md:h-10 w-full rounded border bg-surface-container-lowest text-body-md text-on-surface',
+    !multiline && 'h-11 md:h-10',
+    'w-full rounded border bg-surface-container-lowest text-body-md text-on-surface',
     'placeholder:text-outline transition-colors',
     'focus:outline-none focus:ring-2 focus:ring-primary/30',
     'disabled:cursor-not-allowed disabled:bg-surface-container-low disabled:text-on-surface-variant',

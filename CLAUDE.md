@@ -68,7 +68,7 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 ## Cache (ADR-0007)
 
 - Đọc catalog qua `CatalogCacheService` → `CacheService.getOrLoad` (`modules/cache/`): cache-aside, khoá có version, lock `SET NX PX`, TTL jitter, cache giá trị rỗng. Cache mới dùng lại `CacheService`, không gọi Redis trực tiếp.
-- **Mọi thay đổi giá/tồn kho phải phát `product.updated`**, nếu không cache sẽ cũ. Seed và SQL tay phải tự xoá cache (`prisma/clear-cache.ts`).
+- **Mọi thay đổi giá/giá gốc/ảnh/tồn kho phải phát `product.updated`**, nếu không cache sẽ cũ. Seed và SQL tay phải tự xoá cache (`prisma/clear-cache.ts`).
 - `CatalogCacheListener` chạy **đồng bộ** (không `async: true`) và không có `await` trước lệnh Redis, để lệnh invalidation được gửi trước khi trả response.
 - Redis chỉ là lớp tăng tốc: lỗi/timeout (`REDIS_COMMAND_TIMEOUT_MS`) → log cảnh báo, đọc DB, không trả lỗi cho khách.
 
@@ -120,9 +120,13 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Component dùng chung ở `src/components/ui` (import từ `components/ui`); icon = Material Symbols qua `<Icon name="…" />`. File `.tsx` chỉ export component (luật react-refresh) – hook/hằng/helper để file `.ts` riêng.
 - Gọi API **chỉ** qua `api/client.ts` (`api.get/post…`) và đọc dữ liệu server bằng TanStack Query; không `fetch` thẳng. Client tự gắn token, refresh **single-flight** khi 401 (refresh token xoay vòng, dùng một lần), chuẩn hoá lỗi thành `ApiError { status, code, message, details }`, 429 → `rateLimitStore` → `RateLimitBanner` đếm ngược theo `Retry-After`.
 - Phiên (`auth/session.ts`) lưu localStorage, vai trò đọc từ JWT **chỉ để điều hướng**; quyền thật do API kiểm. Đánh đổi: token đọc được nếu dính XSS – không dùng `dangerouslySetInnerHTML` với dữ liệu người dùng.
-- Route nhân viên khai báo ở `router/staff-nav.ts` (menu + vai trò); guard `RequireAuth roles={…}` (chưa đăng nhập → `/dang-nhap?next=`, sai vai trò → 403).
+- Route nhân viên khai báo ở `router/staff-nav.ts` (menu + vai trò); guard `RequireAuth roles={…}` (chưa đăng nhập → `/dang-nhap?next=`, sai vai trò → 403). Trang nhân viên/admin mới phải `lazy()` trong `routes.tsx`, đặt **bên trong** `RequireAuth` để người không có quyền không tải chunk; ma trận quyền test ở `router/routes.test.tsx`.
+- Layout nhân viên có sidebar 16rem: breakpoint Tailwind tính theo màn hình, nên bố cục nhiều cột phải tính cả phần sidebar đã chiếm (kiểm tra ở 1280px).
 - Trạng thái đơn → nhãn/màu chỉ ở `ORDER_STATUS_META` (`src/orders/order-status.ts`); type `OrderStatus` dùng chung với `realtime/order-socket.ts`.
 - Hiển thị tiền/thời gian qua `lib/format.ts` (`formatPrice` → `1.290.000 ₫`, giờ `Asia/Ho_Chi_Minh`).
+- Trang có bộ lọc giữ state trên **URL query** (chia sẻ link, Back/Forward): parse/serialize thuần trong `<feature>/…-filters.ts` (bỏ giá trị sai, bỏ giá trị mặc định), hook `use…Filters` đọc/ghi `useSearchParams`; ví dụ mẫu `src/products/` + `pages/ProductListPage.tsx`.
+- Request ghi có rủi ro bấm trùng (`POST /orders`…) gửi `Idempotency-Key` từ `newIdempotencyKey()` (`lib/idempotency.ts`), **sinh một lần cho mỗi lần đặt**: giữ key khi lỗi thử lại được (mạng, 5xx, 429, `IDEMPOTENCY_CONFLICT`), bỏ key khi thành công, lỗi nghiệp vụ hoặc dữ liệu gửi đi đổi (mẫu: `cart/usePlaceOrder.ts`).
+- Test web: Vitest + Testing Library (`pnpm --filter @shopfast/web test`, cũng chạy trong `pnpm test`). File `*.test.ts(x)` cạnh code; render trang bằng `renderPage` (`src/test/render.tsx`), giả API bằng `fakeApi` + `loginAs` (`src/test/fake-api.ts`) – thay `fetch`, request vẫn đi qua `api/client.ts` thật; **không** gọi API thật. Truy vấn theo role/label (a11y), không theo class.
 - Biến môi trường web có tiền tố `VITE_`, khai báo kiểu ở `src/vite-env.d.ts` và `apps/web/.env.example`. Không đặt secret ở web (mọi thứ trong bundle đều công khai).
 
 ## Tài liệu API (Swagger)

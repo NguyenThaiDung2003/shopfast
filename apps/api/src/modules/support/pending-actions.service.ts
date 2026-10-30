@@ -93,8 +93,12 @@ export class PendingActionsService {
   }
 
   async list(query: ListPendingActionsQuery): Promise<Page<PendingActionDto>> {
-    const { page, limit, status } = query;
-    const { items, total } = await this.repository.findPage(status, (page - 1) * limit, limit);
+    const { page, limit, status, ticketId } = query;
+    const { items, total } = await this.repository.findPage(
+      { status, ticketId },
+      (page - 1) * limit,
+      limit,
+    );
     return toPage(items.map(toPendingActionView), total, page, limit);
   }
 

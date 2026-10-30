@@ -14,8 +14,9 @@ import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RateLimit } from '../rate-limit/rate-limit.decorator';
+import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersQuery } from './dto/list-orders.query';
-import { OrderDto, OrderPageDto } from './dto/order.response';
+import { MyOrderPageDto, OrderDto, StaffOrderPageDto } from './dto/order.response';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { IdempotencyKey, IdempotencyKeyPipe } from './idempotency-key.pipe';
 import { OrdersService } from './orders.service';
@@ -48,22 +49,44 @@ export class OrdersController {
   async create(
     @CurrentUser() user: AuthUser,
     @IdempotencyKey(IdempotencyKeyPipe) idempotencyKey: string | undefined,
+    @Body() dto: CreateOrderDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<OrderDto> {
-    const { order, replayed } = await this.ordersService.create(user, idempotencyKey);
+    const { order, replayed } = await this.ordersService.create(user, idempotencyKey, dto.shipping);
     if (replayed) {
       res.status(HttpStatus.OK).setHeader('Idempotent-Replayed', 'true');
     }
     return order;
   }
 
-  /** Lịch sử đơn của tôi (mới nhất trước) */
+  /**
+   * Lịch sử đơn của tôi (mới nhất trước)
+   *
+   * Lọc theo `status` (nhiều giá trị cách dấu phẩy) và `q` (mã đơn hoặc tên sản phẩm); kèm
+   * `statusCounts` để hiện số đơn trên từng tab.
+   */
   // Khai báo trước ':id' để "me" không bị ParseUuidPipe bắt.
   @Get('me')
   @Roles(Role.CUSTOMER)
   @ApiErrorResponses(400, 401, 403)
-  listMine(@CurrentUser() user: AuthUser, @Query() query: ListOrdersQuery): Promise<OrderPageDto> {
+  listMine(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListOrdersQuery,
+  ): Promise<MyOrderPageDto> {
     return this.ordersService.listMine(user, query);
+  }
+
+  /**
+   * Danh sách đơn (nhân viên kho)
+   *
+   * Mới nhất trước. Lọc `status` (nhiều giá trị cách dấu phẩy), tìm `q` theo mã đơn, tên sản
+   * phẩm, tên/email khách. Mỗi đơn có `customer` và `nextStatuses` (bước chuyển hợp lệ).
+   */
+  @Get()
+  @Roles(Role.WAREHOUSE, Role.ADMIN)
+  @ApiErrorResponses(400, 401, 403)
+  list(@CurrentUser() user: AuthUser, @Query() query: ListOrdersQuery): Promise<StaffOrderPageDto> {
+    return this.ordersService.list(user, query);
   }
 
   /**

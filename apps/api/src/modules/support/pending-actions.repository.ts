@@ -90,11 +90,14 @@ export class PendingActionsRepository {
   }
 
   async findPage(
-    status: PendingActionStatus | undefined,
+    filter: { status?: PendingActionStatus; ticketId?: string },
     skip: number,
     take: number,
   ): Promise<{ items: PendingActionRecord[]; total: number }> {
-    const where = (status ? { status } : {}) satisfies Prisma.PendingActionWhereInput;
+    const where = {
+      ...(filter.status && { status: filter.status }),
+      ...(filter.ticketId && { ticketId: filter.ticketId }),
+    } satisfies Prisma.PendingActionWhereInput;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.pendingAction.findMany({
         where,

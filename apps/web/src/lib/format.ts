@@ -35,6 +35,16 @@ export function formatPrice(value: number): string {
   return `${numberFormat.format(Math.round(value))}${NBSP}₫`;
 }
 
+const compactFormat = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 });
+
+/** Giá rút gọn cho chip/nhãn: `500k`, `2tr`, `1,5tr`, `1,2 tỷ`. */
+export function formatCompactPrice(value: number): string {
+  if (value >= 1_000_000_000) return `${compactFormat.format(value / 1_000_000_000)} tỷ`;
+  if (value >= 1_000_000) return `${compactFormat.format(value / 1_000_000)}tr`;
+  if (value >= 1_000) return `${compactFormat.format(value / 1_000)}k`;
+  return formatPrice(value);
+}
+
 /** `24/10/2024` theo giờ Việt Nam. */
 export function formatDate(value: DateInput): string {
   return dateFormat.format(toDate(value));

@@ -6,7 +6,7 @@ import { Spinner } from './Spinner';
 const VARIANT = {
   /** CTA chuyển đổi: "Mua ngay", "Thêm vào giỏ", "Xác nhận" – cam. */
   primary:
-    'bg-secondary-container text-on-secondary shadow-sm hover:bg-secondary active:bg-on-secondary-fixed-variant',
+    'bg-secondary-container text-on-secondary shadow-card hover:bg-secondary active:bg-on-secondary-fixed-variant',
   /** Phương án phụ cho CTA: viền cam, nền nhạt. */
   secondary:
     'border border-secondary-container bg-secondary-fixed/40 text-secondary hover:bg-secondary-fixed',

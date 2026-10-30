@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Role } from '@prisma/client';
+import { OrderStatus, Role } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma.service';
@@ -44,6 +44,8 @@ describe('Catalog (e2e)', () => {
       data: [
         { name: 'E2E A', slug: 'e2e-cat-a' },
         { name: 'E2E B', slug: 'e2e-cat-b' },
+        // Sắp theo byte sẽ đẩy "Â" ra sau "E"; tiếng Việt thì "Â" đứng cạnh "A".
+        { name: 'Âm thanh E2E', slug: 'e2e-viet-am-thanh' },
       ],
     });
     const [brandX, brandY] = await prisma.brand.createManyAndReturn({
@@ -179,6 +181,31 @@ describe('Catalog (e2e)', () => {
     });
   });
 
+  describe('GET /categories, GET /brands (công khai)', () => {
+    type Facet = { id: number; name: string; slug: string; productCount: number };
+
+    it('danh mục: không cần đăng nhập, có số sản phẩm, sắp theo tên', async () => {
+      const { body } = await http.get('/api/categories').expect(200);
+      const rows = (body as Facet[]).filter((c) => c.slug.startsWith('e2e-cat-'));
+      expect(rows).toEqual([
+        { id: ids.catA, name: 'E2E A', slug: 'e2e-cat-a', productCount: 12 },
+        { id: ids.catB, name: 'E2E B', slug: 'e2e-cat-b', productCount: 12 },
+      ]);
+      const names = (body as Facet[]).map((c) => c.name);
+      expect(names.indexOf('Âm thanh E2E')).toBeLessThan(names.indexOf('E2E A'));
+      expect(names).toEqual([...names].sort(new Intl.Collator('vi').compare));
+    });
+
+    it('thương hiệu: số sản phẩm khớp dữ liệu', async () => {
+      const { body } = await http.get('/api/brands').expect(200);
+      const rows = (body as Facet[]).filter((b) => b.slug.startsWith('e2e-brand-'));
+      expect(rows.map((b) => [b.id, b.productCount])).toEqual([
+        [ids.brandX, 16],
+        [ids.brandY, 8],
+      ]);
+    });
+  });
+
   describe('GET /products/:id', () => {
     it('200: trả chi tiết có description', async () => {
       const { body } = await http.get(`/api/products/${productId(1)}`).expect(200);
@@ -199,6 +226,111 @@ describe('Catalog (e2e)', () => {
       const { body } = await http.get(`/api/products/${id}`).expect(400);
 
       expect(body.code).toBe('INVALID_ID');
+    });
+  });
+
+  describe('GET /products/inventory (nhân viên kho)', () => {
+    // Danh mục riêng → lọc theo categoryId không lẫn dữ liệu test khác chạy song song.
+    const inv = { categoryId: 0, out: 0, low: 0, ok: 0 };
+    const inventory = (qs: string, token = tokens.warehouse) =>
+      http.get(`/api/products/inventory?${qs}`).set('Authorization', `Bearer ${token}`);
+
+    beforeAll(async () => {
+      const category = await prisma.category.create({
+        data: { name: 'E2E Inventory', slug: 'e2e-inventory' },
+      });
+      inv.categoryId = category.id;
+      const make = (sku: string, stock: number) =>
+        prisma.product.create({
+          data: {
+            sku,
+            name: `Kho ${sku}`,
+            slug: sku.toLowerCase(),
+            price: 100_000,
+            stock,
+            categoryId: category.id,
+            brandId: ids.brandX,
+          },
+        });
+      inv.out = (await make('INV-E2E-OUT', 0)).id;
+      inv.low = (await make('INV-E2E-LOW', 3)).id;
+      inv.ok = (await make('INV-E2E-OK', 20)).id;
+    });
+
+    it('lọc mức tồn theo ngưỡng 5, sắp hàng sắp hết lên đầu, tìm SKU không phân biệt hoa thường', async () => {
+      const all = await inventory(`categoryId=${inv.categoryId}`).expect(200);
+      expect(all.body.items.map((p: { id: number }) => p.id)).toEqual([inv.out, inv.low, inv.ok]);
+      expect(all.body.items[0]).toHaveProperty('updatedAt');
+
+      for (const [level, id] of [
+        ['out', inv.out],
+        ['low', inv.low],
+        ['ok', inv.ok],
+      ] as const) {
+        const { body } = await inventory(`categoryId=${inv.categoryId}&stockLevel=${level}`).expect(
+          200,
+        );
+        expect(body.items.map((p: { id: number }) => p.id)).toEqual([id]);
+      }
+
+      const bySku = await inventory('q=inv-e2e-lo').expect(200);
+      expect(bySku.body.items.map((p: { id: number }) => p.id)).toEqual([inv.low]);
+
+      const { summary } = all.body;
+      expect(summary.lowStockThreshold).toBe(5);
+      expect(summary.totalSkus).toBeGreaterThanOrEqual(PRODUCT_COUNT + 3);
+      expect(summary.outOfStock).toBeGreaterThanOrEqual(1);
+      expect(summary.lowStock).toBeGreaterThanOrEqual(1);
+      expect(summary.stockValue).toBeGreaterThanOrEqual(23 * 100_000);
+    });
+
+    it('sau PATCH thấy tồn mới ngay (không qua cache); khách 403; tham số sai 400', async () => {
+      await patch(inv.low, { stockDelta: 7 }, tokens.warehouse).expect(200);
+      const { body } = await inventory(`categoryId=${inv.categoryId}&stockLevel=ok`).expect(200);
+      expect(body.items.map((p: { id: number }) => p.id).sort()).toEqual([inv.low, inv.ok].sort());
+
+      await inventory('', tokens.customer).expect(403);
+      await inventory('stockLevel=few').expect(400);
+      await inventory(`q=${'a'.repeat(101)}`).expect(400);
+    });
+  });
+
+  describe('giá gốc và số đã bán', () => {
+    it('giá gốc chỉ hiện khi lớn hơn giá bán; số đã bán bỏ đơn huỷ', async () => {
+      const id = productId(20);
+      const { price } = await prisma.product.findUniqueOrThrow({ where: { id } });
+      await prisma.product.update({
+        where: { id },
+        data: { compareAtPrice: price + 1000, imageUrl: '/images/products/x.svg' },
+      });
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: 'customer.catalog.e2e@shopfast.local' },
+      });
+      const order = (status: OrderStatus, quantity: number) =>
+        prisma.order.create({
+          data: {
+            userId: user.id,
+            status,
+            totalAmount: quantity * price,
+            items: { create: { productId: id, quantity, unitPrice: price } },
+          },
+        });
+      await order(OrderStatus.PAID, 3);
+      await order(OrderStatus.CANCELLED, 5);
+
+      // PATCH phát product.updated → xoá cache, lần đọc sau thấy dữ liệu mới.
+      const read = async () => {
+        await patch(id, { stockDelta: 1 }, tokens.warehouse).expect(200);
+        return (await http.get(`/api/products/${id}`).expect(200)).body;
+      };
+      expect(await read()).toMatchObject({
+        imageUrl: '/images/products/x.svg',
+        compareAtPrice: price + 1000,
+        soldCount: 3,
+      });
+
+      await prisma.product.update({ where: { id }, data: { compareAtPrice: price } });
+      expect((await read()).compareAtPrice).toBeNull();
     });
   });
 
@@ -245,12 +377,109 @@ describe('Catalog (e2e)', () => {
       expect(events[0]!.changes).toEqual({ price: { from: 400_000, to: 399_000 } });
     });
 
+    it('admin sửa và xoá giá gốc, ảnh: GET thấy ngay nhờ xoá cache, phần không gửi giữ nguyên', async () => {
+      const id = productId(21);
+      const price = 2_100_000;
+      const read = async () => (await http.get(`/api/products/${id}`).expect(200)).body;
+      await read(); // nạp cache
+
+      await patch(
+        id,
+        { compareAtPrice: 3_000_000, imageUrl: '/images/a.png' },
+        tokens.admin,
+      ).expect(200);
+      expect(await read()).toMatchObject({ compareAtPrice: 3_000_000, imageUrl: '/images/a.png' });
+      expect(events).toHaveLength(1);
+
+      await patch(id, { imageUrl: null }, tokens.admin).expect(200);
+      expect(await read()).toMatchObject({ compareAtPrice: 3_000_000, imageUrl: null });
+
+      await patch(
+        id,
+        { compareAtPrice: null, imageUrl: 'https://cdn.example/a.png' },
+        tokens.admin,
+      ).expect(200);
+      expect(await read()).toMatchObject({
+        price,
+        compareAtPrice: null,
+        imageUrl: 'https://cdn.example/a.png',
+      });
+    });
+
+    it('400 INVALID_COMPARE_AT_PRICE: so với giá trong DB và giá gửi cùng request, không ghi gì', async () => {
+      const id = productId(22);
+      const price = 2_200_000;
+
+      for (const body of [
+        { compareAtPrice: price },
+        { compareAtPrice: price + 1, price: price + 1 },
+      ]) {
+        const res = await patch(id, body, tokens.admin).expect(400);
+        expect(res.body.code).toBe('INVALID_COMPARE_AT_PRICE');
+      }
+      const row = await prisma.product.findUniqueOrThrow({ where: { id } });
+      expect(row).toMatchObject({ price, compareAtPrice: null });
+      expect(events).toHaveLength(0);
+
+      await patch(id, { compareAtPrice: price, price: price - 1 }, tokens.admin).expect(200);
+    });
+
+    it('giá vượt giá gốc: khách không thấy giảm giá, tồn kho vẫn trả giá gốc đã lưu để sửa', async () => {
+      const id = productId(23);
+      await patch(id, { compareAtPrice: 2_400_000 }, tokens.admin).expect(200);
+      await patch(id, { price: 2_500_000 }, tokens.admin).expect(200);
+
+      expect((await http.get(`/api/products/${id}`).expect(200)).body.compareAtPrice).toBeNull();
+      const { body } = await http
+        .get('/api/products/inventory?q=E2E-023')
+        .set('Authorization', `Bearer ${tokens.warehouse}`)
+        .expect(200);
+      expect(body.items[0]).toMatchObject({ compareAtPrice: 2_400_000, imageUrl: null });
+    });
+
+    it('403 FORBIDDEN_FIELD: warehouse không được sửa giá gốc, ảnh', async () => {
+      for (const body of [{ compareAtPrice: 9_000_000 }, { imageUrl: null }]) {
+        const res = await patch(productId(22), body, tokens.warehouse).expect(403);
+        expect(res.body.code).toBe('FORBIDDEN_FIELD');
+      }
+    });
+
+    it('400: đường dẫn ảnh không an toàn', async () => {
+      for (const imageUrl of [
+        'javascript:alert(1)',
+        'http://example.com/a.png',
+        '//evil.example/a.png',
+        '/\\evil.example/a.png',
+        '/a b.png',
+        `/${'a'.repeat(500)}`,
+      ]) {
+        const { body } = await patch(productId(22), { imageUrl }, tokens.admin).expect(400);
+        expect(body.code).toBe('VALIDATION_FAILED');
+      }
+    });
+
     it('409 INSUFFICIENT_STOCK: trừ quá tồn kho, tồn kho không đổi, không phát event', async () => {
       const { body } = await patch(productId(5), { stockDelta: -11 }, tokens.warehouse).expect(409);
 
       expect(body.code).toBe('INSUFFICIENT_STOCK');
       const product = await http.get(`/api/products/${productId(5)}`);
       expect(product.body.stock).toBe(10);
+      expect(events).toHaveLength(0);
+    });
+
+    it('expectedStock: khớp → ghi; lệch → 409 STOCK_CHANGED, tồn kho không đổi, không phát event', async () => {
+      const id = productId(6);
+      const start = (await http.get(`/api/products/${id}`)).body.stock as number;
+      await patch(id, { stock: start + 5, expectedStock: start }, tokens.warehouse).expect(200);
+      events.length = 0;
+
+      const { body } = await patch(
+        id,
+        { stock: 99, expectedStock: start },
+        tokens.warehouse,
+      ).expect(409);
+      expect(body).toMatchObject({ code: 'STOCK_CHANGED', details: { current: start + 5 } });
+      expect((await http.get(`/api/products/${id}`)).body.stock).toBe(start + 5);
       expect(events).toHaveLength(0);
     });
 

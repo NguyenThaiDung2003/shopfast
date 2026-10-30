@@ -1,15 +1,23 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom';
+import { ROLE_HOME } from '../auth/roles';
 import { useSession } from '../auth/useAuth';
+import { fetchCart } from '../cart/cart-api';
 import { RateLimitBanner } from '../components/RateLimitBanner';
 import { Icon } from '../components/ui';
 import { cn } from '../lib/cn';
+import { cartKeys } from '../products/product-api';
 import { Logo } from './Logo';
 import { UserMenu } from './UserMenu';
 
-const NAV = [
+const PUBLIC_NAV: Array<{ to: string; label: string; end?: boolean }> = [
   { to: '/', label: 'Trang chủ', end: true },
   { to: '/san-pham', label: 'Sản phẩm' },
+];
+
+/** Chỉ tài khoản khách vào được (nhân viên sẽ gặp 403), người chưa đăng nhập được mời đăng nhập. */
+const CUSTOMER_NAV = [
   { to: '/don-hang', label: 'Đơn hàng của tôi' },
   { to: '/ho-tro', label: 'Hỗ trợ' },
 ];
@@ -21,6 +29,35 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
       ? 'text-title-sm text-primary'
       : 'text-body-md text-on-surface-variant hover:text-on-surface',
   );
+
+/** Số món trong giỏ trên icon navbar; chỉ khách hàng mới có giỏ (dùng chung cache với trang giỏ). */
+function CartLink() {
+  const session = useSession();
+  const { data } = useQuery({
+    queryKey: cartKeys.all,
+    queryFn: ({ signal }) => fetchCart(signal),
+    enabled: session?.user.role === 'CUSTOMER',
+    staleTime: 60_000,
+  });
+  const count = session?.user.role === 'CUSTOMER' ? (data?.totalQuantity ?? 0) : 0;
+  return (
+    <Link
+      to="/gio-hang"
+      aria-label={count > 0 ? `Giỏ hàng (${count} món)` : 'Giỏ hàng'}
+      className="relative flex items-center justify-center rounded-xl p-space-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+    >
+      <Icon name="shopping_cart" className="text-2xl" />
+      {count > 0 && (
+        <span
+          className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary-container px-space-xs text-label-sm font-bold text-on-secondary"
+          aria-hidden
+        >
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 function SearchBox({ className }: { className?: string }) {
   const navigate = useNavigate();
@@ -65,6 +102,12 @@ function SearchBox({ className }: { className?: string }) {
 export function CustomerLayout() {
   const session = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const role = session?.user.role;
+  const isStaff = role !== undefined && role !== 'CUSTOMER';
+  const nav: typeof PUBLIC_NAV = [
+    ...PUBLIC_NAV,
+    ...(isStaff ? [{ to: ROLE_HOME[role], label: 'Trang quản trị' }] : CUSTOMER_NAV),
+  ];
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -91,19 +134,13 @@ export function CustomerLayout() {
                 aria-label="Điều hướng chính"
                 className="hidden items-center gap-space-lg xl:flex"
               >
-                {NAV.map((item) => (
+                {nav.map((item) => (
                   <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
                     {item.label}
                   </NavLink>
                 ))}
               </nav>
-              <Link
-                to="/gio-hang"
-                aria-label="Giỏ hàng"
-                className="flex items-center justify-center rounded-xl p-space-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
-              >
-                <Icon name="shopping_cart" className="text-2xl" />
-              </Link>
+              {!isStaff && <CartLink />}
               <div className="border-l border-outline-variant/30 pl-space-sm">
                 {session ? (
                   <UserMenu afterLogout="/" />
@@ -138,7 +175,7 @@ export function CustomerLayout() {
           <div className="border-t border-surface-container-high bg-surface-container-lowest px-margin-mobile py-space-md xl:hidden">
             <SearchBox className="mb-space-md md:hidden" />
             <nav aria-label="Điều hướng chính" className="flex flex-col gap-space-md">
-              {NAV.map((item) => (
+              {nav.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -164,14 +201,16 @@ export function CustomerLayout() {
       <footer className="border-t border-surface-container-high bg-surface-container-lowest">
         <div className="mx-auto flex max-w-content flex-wrap items-center justify-between gap-space-md px-margin-mobile py-space-xl text-body-sm text-on-surface-variant md:px-margin lg:px-12">
           <p>© {new Date().getFullYear()} ShopFast Việt Nam.</p>
-          <nav aria-label="Liên kết cuối trang" className="flex gap-space-lg">
-            <Link to="/ho-tro" className="hover:text-primary">
-              Trung tâm hỗ trợ
-            </Link>
-            <Link to="/don-hang" className="hover:text-primary">
-              Tra cứu đơn hàng
-            </Link>
-          </nav>
+          {!isStaff && (
+            <nav aria-label="Liên kết cuối trang" className="flex gap-space-lg">
+              <Link to="/ho-tro" className="hover:text-primary">
+                Trung tâm hỗ trợ
+              </Link>
+              <Link to="/don-hang" className="hover:text-primary">
+                Tra cứu đơn hàng
+              </Link>
+            </nav>
+          )}
         </div>
       </footer>
     </div>

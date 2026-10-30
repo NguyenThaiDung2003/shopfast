@@ -328,6 +328,46 @@ describe('Cart & Orders (e2e)', () => {
     });
   });
 
+  describe('thông tin nhận hàng', () => {
+    const shipping = {
+      recipientName: '  Nguyễn Văn An ',
+      phone: '0912345678',
+      address: '123 Lê Lợi, Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      note: 'Gọi trước khi đến',
+    };
+    const fillCart = () =>
+      http
+        .post('/api/cart/items')
+        .set(auth(users.alice.token))
+        .send({ productId: product.a, quantity: 1 })
+        .expect(201);
+    const order = (body: object) =>
+      http.post('/api/orders').set(auth(users.alice.token)).send(body);
+
+    it('lưu cùng đơn, chủ đơn đọc lại được; khách khác 404', async () => {
+      await fillCart();
+      const { body } = await order({ shipping }).expect(201);
+      expect(body.shipping).toEqual({ ...shipping, recipientName: 'Nguyễn Văn An' });
+
+      const read = await http
+        .get(`/api/orders/${body.id}`)
+        .set(auth(users.alice.token))
+        .expect(200);
+      expect(read.body.shipping.address).toBe(shipping.address);
+      await http.get(`/api/orders/${body.id}`).set(auth(users.bob.token)).expect(404);
+    });
+
+    it('SĐT hoặc địa chỉ sai → 400, chưa tạo đơn; không gửi shipping vẫn đặt được', async () => {
+      await fillCart();
+      const bad = await order({ shipping: { ...shipping, phone: '12345' } }).expect(400);
+      expect(bad.body.code).toBe('VALIDATION_FAILED');
+      await order({ shipping: { ...shipping, address: 'abc' } }).expect(400);
+
+      const { body } = await order({}).expect(201);
+      expect(body.shipping).toBeNull();
+    });
+  });
+
   describe('xem đơn', () => {
     let orderId: string;
 

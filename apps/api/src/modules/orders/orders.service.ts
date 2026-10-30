@@ -11,10 +11,20 @@ import { OrderDto } from './dto/order.response';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { ORDER_CREATED, OrderCreatedEvent } from './events/order-created.event';
 import { ORDER_STATUS_CHANGED, OrderStatusChangedEvent } from './events/order-status-changed.event';
-import { assertTransition, ORDER_STATUS_LABELS } from './order-status.machine';
-import { OrderRecord, OrdersRepository, RestockedItem, Shortage } from './orders.repository';
+import { allowedNext, assertTransition, ORDER_STATUS_LABELS } from './order-status.machine';
+import {
+  OrderRecord,
+  OrdersRepository,
+  OrderStatusCounts,
+  RestockedItem,
+  ShippingInfo,
+  Shortage,
+} from './orders.repository';
 
 export type OrderView = OrderDto;
+
+/** Lịch sử đơn của khách kèm số đơn theo trạng thái (tab trang "Đơn hàng của tôi"). */
+export type MyOrderPage = Page<OrderView> & { statusCounts: OrderStatusCounts };
 
 export interface CreateOrderOutcome {
   order: OrderView;
@@ -41,6 +51,15 @@ export function toOrderView(order: OrderRecord, viewer: AuthUser): OrderView {
     totalAmount,
     paidAt,
     createdAt,
+    shipping:
+      order.recipientName && order.recipientPhone && order.shippingAddress
+        ? {
+            recipientName: order.recipientName,
+            phone: order.recipientPhone,
+            address: order.shippingAddress,
+            note: order.shippingNote,
+          }
+        : null,
     items: items.map(({ productId, quantity, unitPrice, product }) => ({
       productId,
       sku: product.sku,
@@ -56,6 +75,8 @@ export function toOrderView(order: OrderRecord, viewer: AuthUser): OrderView {
       changedAt: createdAt,
       changedBy: showStaff ? changedBy : { role: changedBy.role },
     })),
+    // Bước kế tiếp lấy từ ORDER_TRANSITIONS để web không phải chép luật chuyển trạng thái.
+    ...(showStaff && { customer: order.user, nextStatuses: [...allowedNext(status)] }),
   };
 }
 
@@ -77,7 +98,11 @@ export class OrdersService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async create(user: AuthUser, idempotencyKey?: string): Promise<CreateOrderOutcome> {
+  async create(
+    user: AuthUser,
+    idempotencyKey?: string,
+    shipping?: ShippingInfo,
+  ): Promise<CreateOrderOutcome> {
     const replay = await this.findReplay(user, idempotencyKey);
     if (replay) return replay;
 
@@ -94,7 +119,12 @@ export class OrdersService {
       );
     }
 
-    const result = await this.ordersRepository.createFromCart(user.id, lines, idempotencyKey);
+    const result = await this.ordersRepository.createFromCart(
+      user.id,
+      lines,
+      idempotencyKey,
+      shipping,
+    );
     switch (result.status) {
       case 'created':
         this.publishCreated(result.order, result.stockAfter, user);
@@ -135,19 +165,42 @@ export class OrdersService {
     }
   }
 
-  async listMine(user: AuthUser, query: ListOrdersQuery): Promise<Page<OrderView>> {
-    const { page, limit } = query;
-    const { items, total } = await this.ordersRepository.findPageByUser(
+  async listMine(user: AuthUser, query: ListOrdersQuery): Promise<MyOrderPage> {
+    const { page, limit, status, q } = query;
+    const { items, total, statusCounts } = await this.ordersRepository.findPageByUser(
       user.id,
+      { statuses: status, q },
       (page - 1) * limit,
       limit,
     );
-    return toPage(
-      items.map((o) => toOrderView(o, user)),
-      total,
-      page,
+    return {
+      ...toPage(
+        items.map((o) => toOrderView(o, user)),
+        total,
+        page,
+        limit,
+      ),
+      statusCounts,
+    };
+  }
+
+  /** Danh sách đơn cho nhân viên kho (mới nhất trước). */
+  async list(staff: AuthUser, query: ListOrdersQuery): Promise<MyOrderPage> {
+    const { page, limit, status, q } = query;
+    const { items, total, statusCounts } = await this.ordersRepository.findPage(
+      { statuses: status, q },
+      (page - 1) * limit,
       limit,
     );
+    return {
+      ...toPage(
+        items.map((o) => toOrderView(o, staff)),
+        total,
+        page,
+        limit,
+      ),
+      statusCounts,
+    };
   }
 
   /** Chủ đơn hoặc nhân viên; customer khác nhận 404 để không lộ đơn có tồn tại hay không. */

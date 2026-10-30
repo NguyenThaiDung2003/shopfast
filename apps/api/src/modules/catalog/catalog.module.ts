@@ -5,10 +5,11 @@ import { CatalogCacheService } from './catalog-cache.service';
 import { CatalogController } from './catalog.controller';
 import { CatalogRepository } from './catalog.repository';
 import { CatalogService } from './catalog.service';
+import { TaxonomyController } from './taxonomy.controller';
 
 @Module({
   imports: [CacheModule],
-  controllers: [CatalogController],
+  controllers: [CatalogController, TaxonomyController],
   providers: [CatalogService, CatalogRepository, CatalogCacheService, CatalogCacheListener],
   // Trợ lý AI (F06) tra tồn kho qua CatalogService.stockBySku.
   exports: [CatalogService],

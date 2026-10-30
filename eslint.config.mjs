@@ -53,5 +53,10 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  {
+    // Test và helper test không đi qua Fast Refresh.
+    files: ['apps/web/src/**/*.test.{ts,tsx}', 'apps/web/src/test/**/*.{ts,tsx}'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
   prettier,
 );

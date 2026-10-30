@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PendingActionStatus } from '@prisma/client';
-import { IsEnum, IsOptional } from 'class-validator';
+import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { PageQuery } from './list-tickets.query';
 
 export class ListPendingActionsQuery extends PageQuery {
@@ -13,4 +13,9 @@ export class ListPendingActionsQuery extends PageQuery {
   @IsOptional()
   @IsEnum(PendingActionStatus)
   status?: PendingActionStatus;
+
+  /** Chỉ lấy đề xuất của ticket này. */
+  @IsOptional()
+  @IsUUID()
+  ticketId?: string;
 }

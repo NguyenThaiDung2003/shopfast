@@ -22,6 +22,11 @@ const order: OrderRecord = {
   totalAmount: 450_000,
   paidAt: null,
   createdAt: new Date('2026-10-29T10:00:00Z'),
+  recipientName: null,
+  recipientPhone: null,
+  shippingAddress: null,
+  shippingNote: null,
+  user: { id: customer.id, fullName: 'Khách A', email: 'a@example.com' },
   items: [
     { productId: 1, quantity: 2, unitPrice: 200_000, product: { sku: 'A', name: 'Chuột' } },
     { productId: 2, quantity: 1, unitPrice: 50_000, product: { sku: 'B', name: 'Cáp' } },
@@ -62,7 +67,12 @@ describe('OrdersService', () => {
   let orders: jest.Mocked<
     Pick<
       OrdersRepository,
-      'createFromCart' | 'findByIdempotencyKey' | 'findById' | 'findPageByUser' | 'changeStatus'
+      | 'createFromCart'
+      | 'findByIdempotencyKey'
+      | 'findById'
+      | 'findPageByUser'
+      | 'findPage'
+      | 'changeStatus'
     >
   >;
   let cart: jest.Mocked<Pick<CartRepository, 'findCheckoutLines'>>;
@@ -82,6 +92,7 @@ describe('OrdersService', () => {
       findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
       findPageByUser: jest.fn(),
+      findPage: jest.fn(),
       changeStatus: jest.fn(),
     };
     cart = {
@@ -99,6 +110,34 @@ describe('OrdersService', () => {
   });
 
   describe('create', () => {
+    it('truyền thông tin nhận hàng xuống repository', async () => {
+      const shipping = { recipientName: 'An', phone: '0912345678', address: '1 Lê Lợi, Q1' };
+      await service.create(customer, KEY, shipping);
+
+      expect(orders.createFromCart).toHaveBeenCalledWith(
+        customer.id,
+        expect.any(Array),
+        KEY,
+        shipping,
+      );
+    });
+
+    it('view: có địa chỉ → shipping; đơn cũ → null', () => {
+      expect(toOrderView(order, customer).shipping).toBeNull();
+      expect(
+        toOrderView(
+          {
+            ...order,
+            recipientName: 'An',
+            recipientPhone: '0912345678',
+            shippingAddress: '1 Lê Lợi',
+            shippingNote: null,
+          },
+          customer,
+        ).shipping,
+      ).toEqual({ recipientName: 'An', phone: '0912345678', address: '1 Lê Lợi', note: null });
+    });
+
     it('tạo đơn từ giỏ, trả thành tiền từng dòng', async () => {
       const { order: view, replayed } = await service.create(customer, KEY);
 
@@ -109,6 +148,7 @@ describe('OrdersService', () => {
           { productId: 2, quantity: 1 },
         ],
         KEY,
+        undefined,
       );
       expect(replayed).toBe(false);
       expect(view.items[0]).toEqual({
@@ -337,6 +377,17 @@ describe('OrdersService', () => {
       });
     });
 
+    it('nhân viên thấy khách đặt đơn và các bước chuyển hợp lệ; chủ đơn thì không', () => {
+      expect(toOrderView(orderIn(OrderStatus.PROCESSING), warehouse)).toMatchObject({
+        customer: { id: customer.id, fullName: 'Khách A', email: 'a@example.com' },
+        nextStatuses: [OrderStatus.SHIPPING, OrderStatus.CANCELLED],
+      });
+      expect(toOrderView(orderIn(OrderStatus.DELIVERED), warehouse).nextStatuses).toEqual([]);
+      const own = toOrderView(record, customer);
+      expect(own).not.toHaveProperty('customer');
+      expect(own).not.toHaveProperty('nextStatuses');
+    });
+
     it('chủ đơn chỉ thấy vai trò của người đổi', () => {
       const history = toOrderView(record, customer).statusHistory;
 
@@ -349,6 +400,15 @@ describe('OrdersService', () => {
   });
 
   describe('findOne / listMine', () => {
+    const counts = {
+      PENDING_PAYMENT: 1,
+      PAID: 2,
+      PROCESSING: 3,
+      SHIPPING: 0,
+      DELIVERED: 4,
+      CANCELLED: 1,
+    };
+
     it('chủ đơn xem được', async () => {
       orders.findById.mockResolvedValue(order);
 
@@ -380,15 +440,71 @@ describe('OrdersService', () => {
     });
 
     it('lịch sử đơn phân trang', async () => {
-      orders.findPageByUser.mockResolvedValue({ items: [order], total: 11 });
+      orders.findPageByUser.mockResolvedValue({ items: [order], total: 11, statusCounts: counts });
 
       const page = await service.listMine(
         customer,
         Object.assign(new ListOrdersQuery(), { page: 2, limit: 10 }),
       );
 
-      expect(orders.findPageByUser).toHaveBeenCalledWith(customer.id, 10, 10);
+      expect(orders.findPageByUser).toHaveBeenCalledWith(
+        customer.id,
+        { statuses: undefined, q: undefined },
+        10,
+        10,
+      );
       expect(page.meta).toEqual({ page: 2, limit: 10, total: 11, totalPages: 2 });
+      expect(page.statusCounts).toBe(counts);
+    });
+
+    it('lọc theo nhóm trạng thái và từ khoá → chuyển nguyên cho repository', async () => {
+      orders.findPageByUser.mockResolvedValue({ items: [], total: 0, statusCounts: counts });
+
+      await service.listMine(
+        customer,
+        Object.assign(new ListOrdersQuery(), {
+          status: [OrderStatus.PAID, OrderStatus.PROCESSING],
+          q: 'SF-0001',
+        }),
+      );
+
+      expect(orders.findPageByUser).toHaveBeenCalledWith(
+        customer.id,
+        { statuses: [OrderStatus.PAID, OrderStatus.PROCESSING], q: 'SF-0001' },
+        0,
+        10,
+      );
+    });
+  });
+
+  it('list (nhân viên kho): chuyển bộ lọc cho repository, kèm số đếm', async () => {
+    const counts = {
+      PENDING_PAYMENT: 0,
+      PAID: 1,
+      PROCESSING: 0,
+      SHIPPING: 0,
+      DELIVERED: 0,
+      CANCELLED: 0,
+    };
+    orders.findPage.mockResolvedValue({
+      items: [orderIn(OrderStatus.PAID)],
+      total: 1,
+      statusCounts: counts,
+    });
+
+    const page = await service.list(
+      warehouse,
+      Object.assign(new ListOrdersQuery(), { status: [OrderStatus.PAID], q: 'Khách', page: 3 }),
+    );
+
+    expect(orders.findPage).toHaveBeenCalledWith(
+      { statuses: [OrderStatus.PAID], q: 'Khách' },
+      20,
+      10,
+    );
+    expect(page.statusCounts).toBe(counts);
+    expect(page.items[0]).toMatchObject({
+      nextStatuses: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
     });
   });
 

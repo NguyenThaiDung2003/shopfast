@@ -78,6 +78,8 @@ services:
         condition: service_started
     environment:
       NODE_ENV: development
+      APP_VERSION: ${APP_VERSION:-dev}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
