@@ -25,14 +25,15 @@ Ràng buộc:
 
 **BullMQ** (`@nestjs/bullmq`) trên Redis đã có (`modules/jobs/`).
 
-**Queue và cấu hình.** Có 3 queue có worker, cộng một queue `dead-letter`. Backoff đều là exponential, mức chờ = `QUEUE_BACKOFF_BASE_MS` (mặc định 2s) × hệ số × 2^(lần thử − 1).
+**Queue và cấu hình.** Có 4 queue có worker, cộng một queue `dead-letter`. Backoff đều là exponential, mức chờ = `QUEUE_BACKOFF_BASE_MS` (mặc định 2s) × hệ số × 2^(lần thử − 1).
 
-| Queue            | Job                                                              | attempts | Hệ số backoff |
-| ---------------- | ---------------------------------------------------------------- | -------: | ------------: |
-| `email`          | `order-confirmation`, `payment-reminder`, `daily-revenue-report` |        5 |             1 |
-| `invoice`        | `invoice` (khi đơn → PAID)                                       |        3 |             2 |
-| `inventory-sync` | `inventory-reserve` (đặt đơn), `inventory-release` (huỷ đơn)     |        6 |           0,5 |
-| `dead-letter`    | bản sao job hết lượt thử; không có worker                        |        – |             – |
+| Queue             | Job                                                              | attempts | Hệ số backoff |
+| ----------------- | ---------------------------------------------------------------- | -------: | ------------: |
+| `email`           | `order-confirmation`, `payment-reminder`, `daily-revenue-report` |        5 |             1 |
+| `invoice`         | `invoice` (khi đơn → PAID)                                       |        3 |             2 |
+| `inventory-sync`  | `inventory-reserve` (đặt đơn), `inventory-release` (huỷ đơn)     |        6 |           0,5 |
+| `ticket-classify` | `ticket-classify` (ticket mới, F06, ADR-0011)                    |        4 |             2 |
+| `dead-letter`     | bản sao job hết lượt thử; không có worker                        |        – |             – |
 
 **Đẩy job.** `OrderJobsListener` nghe `order.created` / `order.status_changed` với `async: true` theo ADR-0004, rồi gọi `OrderJobsService`. Cách ánh xạ:
 

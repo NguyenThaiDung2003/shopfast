@@ -98,6 +98,15 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Guard toàn cục (`JwtAuthGuard`, `RolesGuard`, `AppThrottlerGuard`) bỏ qua context không phải `http`; guard mới cũng phải làm vậy.
 - Hợp đồng sự kiện khai báo ở `realtime.events.ts` và `apps/web/src/realtime/order-socket.ts` – đổi cả hai. E2E nhiều instance trong một process cần `EventEmitter2` riêng cho app thứ hai (`realtime.e2e-spec.ts`).
 
+## Support & trợ lý AI (ADR-0011)
+
+- LLM chỉ gọi qua token `LLM_PROVIDER` (`modules/llm/`: `anthropic` | `openai` | `google` | `disabled`, mặc định `disabled`; `google` = Gemini qua endpoint tương thích OpenAI, dùng chung adapter `openai`); không import SDK provider ở nơi khác. Test thay bằng `ScriptedLlmProvider` (`test/scripted-llm.provider.ts`), không bao giờ gọi LLM thật.
+- **Tool của agent chỉ đọc hoặc tạo `PendingAction`.** Thao tác ghi thật chỉ chạy trong `PendingActionsService.confirm` (endpoint nhân viên bấm), giành quyền bằng compare-and-set `PENDING → EXECUTING` và kiểm lại điều kiện lúc xác nhận. Thao tác ghi mới = thêm `PendingActionType` + nhánh trong `confirm`, không thêm tool ghi trực tiếp.
+- Tool gọi service nghiệp vụ (cùng luật quyền như HTTP), lỗi trả cho model dạng `isError` (không ném ra request). Bắt lỗi trong `try` thì phải `return await`.
+- Output của LLM luôn kiểm lại bằng code: enum phân loại (`parseCategory`), câu trả lời cuối (`parseFinalAnswer`), grounding (`agent/grounding.ts` – mã đơn/SKU/trạng thái/tồn kho phải có trong kết quả tool của lượt đó).
+- Nội dung khách viết đưa vào prompt trong thẻ (`<ticket>`, `<ticket_context>`) và ghi rõ là dữ liệu, không phải chỉ dẫn.
+- `LlmError` → 503 `AI_UNAVAILABLE` tiếng Việt, không lộ provider/thông điệp gốc. Phân loại chạy ở queue `ticket-classify`; lần thử cuối lỗi → `KHAC` (FALLBACK), gán bằng `WHERE category IS NULL`.
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.

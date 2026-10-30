@@ -10,5 +10,7 @@ import { CatalogService } from './catalog.service';
   imports: [CacheModule],
   controllers: [CatalogController],
   providers: [CatalogService, CatalogRepository, CatalogCacheService, CatalogCacheListener],
+  // Trợ lý AI (F06) tra tồn kho qua CatalogService.stockBySku.
+  exports: [CatalogService],
 })
 export class CatalogModule {}

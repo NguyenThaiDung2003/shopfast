@@ -3,7 +3,12 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import type { EnvironmentVariables } from '../../config/env.validation';
-import { EmailProcessor, InventorySyncProcessor, InvoiceProcessor } from './processors';
+import {
+  EmailProcessor,
+  InventorySyncProcessor,
+  InvoiceProcessor,
+  TicketClassifyProcessor,
+} from './processors';
 import {
   DAILY_REPORT_CRON,
   DAILY_REPORT_SCHEDULER_ID,
@@ -26,6 +31,7 @@ export class WorkersBootstrapService implements OnApplicationBootstrap {
     private readonly emailProcessor: EmailProcessor,
     private readonly invoiceProcessor: InvoiceProcessor,
     private readonly inventorySyncProcessor: InventorySyncProcessor,
+    private readonly ticketClassifyProcessor: TicketClassifyProcessor,
     @InjectQueue(EMAIL_QUEUE) private readonly emailQueue: Queue,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
@@ -39,6 +45,7 @@ export class WorkersBootstrapService implements OnApplicationBootstrap {
       this.emailProcessor,
       this.invoiceProcessor,
       this.inventorySyncProcessor,
+      this.ticketClassifyProcessor,
     ]) {
       // run() chỉ resolve khi worker đóng (lúc tắt app).
       processor.worker

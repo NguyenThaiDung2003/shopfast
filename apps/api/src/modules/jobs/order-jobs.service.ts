@@ -18,9 +18,9 @@ import {
 } from './queues';
 
 /** Redis sập: lệnh nằm trong offline queue của ioredis; không để listener chờ quá lâu. */
-const ENQUEUE_TIMEOUT_MS = 2_000;
+export const ENQUEUE_TIMEOUT_MS = 2_000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);

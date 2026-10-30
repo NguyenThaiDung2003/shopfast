@@ -22,6 +22,10 @@ export interface CreateOrderOutcome {
   replayed: boolean;
 }
 
+/** Mã đơn hiển thị cho khách, ví dụ SF-000123. */
+export const ORDER_CODE_PATTERN = /^SF-\d{6,}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const STAFF_ROLES: readonly Role[] = [Role.SUPPORT, Role.WAREHOUSE, Role.ADMIN];
 
 const isStaff = (user: AuthUser) => STAFF_ROLES.includes(user.role);
@@ -149,6 +153,24 @@ export class OrdersService {
   /** Chủ đơn hoặc nhân viên; customer khác nhận 404 để không lộ đơn có tồn tại hay không. */
   async findOne(user: AuthUser, orderId: string): Promise<OrderView> {
     const order = await this.ordersRepository.findById(orderId);
+    if (!order || (order.userId !== user.id && !isStaff(user))) {
+      throw orderNotFound();
+    }
+    return toOrderView(order, user);
+  }
+
+  /**
+   * Như findOne nhưng nhận cả mã hiển thị (`SF-000123`) – nhân viên/trợ lý AI thường chỉ có mã
+   * khách đọc cho. Cùng luật quyền: chủ đơn hoặc nhân viên.
+   */
+  async findByRef(user: AuthUser, ref: string): Promise<OrderView> {
+    const value = ref.trim();
+    let order: OrderRecord | null = null;
+    if (UUID_PATTERN.test(value)) {
+      order = await this.ordersRepository.findById(value);
+    } else if (ORDER_CODE_PATTERN.test(value)) {
+      order = await this.ordersRepository.findByCode(value.toUpperCase());
+    }
     if (!order || (order.userId !== user.id && !isStaff(user))) {
       throw orderNotFound();
     }

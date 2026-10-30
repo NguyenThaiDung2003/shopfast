@@ -243,6 +243,10 @@ export class OrdersRepository {
     return this.prisma.order.findUnique({ where: { id }, select: orderDetailSelect });
   }
 
+  findByCode(code: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findUnique({ where: { code }, select: orderDetailSelect });
+  }
+
   async findPageByUser(
     userId: string,
     skip: number,

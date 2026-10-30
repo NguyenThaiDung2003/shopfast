@@ -12,6 +12,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { SupportModule } from './modules/support/support.module';
 import { CartModule } from './modules/cart/cart.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { UsersModule } from './modules/users/users.module';
@@ -40,6 +41,7 @@ import { UsersModule } from './modules/users/users.module';
     OrdersModule,
     JobsModule,
     RealtimeModule,
+    SupportModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
 })

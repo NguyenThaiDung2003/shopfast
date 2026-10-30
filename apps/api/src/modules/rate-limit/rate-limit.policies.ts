@@ -8,6 +8,10 @@ export const RATE_LIMIT_POLICIES = {
   login: 'RATE_LIMIT_LOGIN',
   otpSend: 'RATE_LIMIT_OTP_SEND',
   promoOrder: 'RATE_LIMIT_PROMO_ORDER',
+  /** Mỗi lượt hỏi trợ lý AI tốn tiền gọi LLM (F06). */
+  aiAssistant: 'RATE_LIMIT_AI_ASSISTANT',
+  /** Mỗi ticket mới kéo theo một lời gọi LLM phân loại. */
+  ticketCreate: 'RATE_LIMIT_TICKET_CREATE',
 } as const satisfies Record<string, keyof EnvironmentVariables>;
 
 export type RateLimitPolicy = keyof typeof RATE_LIMIT_POLICIES;

@@ -114,6 +114,16 @@ services:
       REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Ho_Chi_Minh}
       # Realtime (F02, ADR-0010): Socket.IO tại /socket.io, đồng bộ nhiều instance qua Redis.
       WS_MAX_SUBSCRIPTIONS: ${WS_MAX_SUBSCRIPTIONS:-50}
+      # Support & trợ lý AI (F06, ADR-0011). Khoá lấy từ .env, không ghi ở đây.
+      LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-20000}
+      AGENT_MAX_TOOL_ROUNDS: ${AGENT_MAX_TOOL_ROUNDS:-5}
+      AGENT_TIMEOUT_MS: ${AGENT_TIMEOUT_MS:-45000}
+      RATE_LIMIT_AI_ASSISTANT: ${RATE_LIMIT_AI_ASSISTANT:-20/60}
+      RATE_LIMIT_TICKET_CREATE: ${RATE_LIMIT_TICKET_CREATE:-5/300}
       SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:3000'

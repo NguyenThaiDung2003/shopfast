@@ -5,7 +5,15 @@
  * - Mật khẩu user mẫu lấy từ SEED_USER_PASSWORD, không hardcode.
  */
 import { randomUUID } from 'node:crypto';
-import { OrderStatus, Prisma, PrismaClient, Role } from '@prisma/client';
+import {
+  CategorySource,
+  OrderStatus,
+  Prisma,
+  PrismaClient,
+  Role,
+  TicketCategory,
+  TicketStatus,
+} from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { clearCatalogCache } from './clear-cache';
 
@@ -159,6 +167,35 @@ function assertSafeEnvironment(): string {
   return password;
 }
 
+/** Ticket mẫu; `orderIndex` trỏ vào ORDER_STATUS_POOL (đơn i có trạng thái pool[i]). */
+const SAMPLE_TICKETS: Array<{
+  orderIndex: number;
+  subject: string;
+  message: string;
+  category: TicketCategory;
+  reply?: string;
+}> = [
+  {
+    orderIndex: 0,
+    subject: 'Muốn huỷ đơn vừa đặt',
+    message: 'Mình đặt nhầm mẫu, nhờ shop huỷ giúp đơn này với ạ.',
+    category: TicketCategory.DON_HANG,
+  },
+  {
+    orderIndex: 4,
+    subject: 'Đơn giao lâu quá',
+    message: 'Đơn của mình đặt mấy hôm rồi mà chưa thấy giao, shop kiểm tra giúp.',
+    category: TicketCategory.VAN_CHUYEN,
+    reply: 'Chào bạn, đơn đang trên đường giao, dự kiến 1–2 ngày nữa tới nơi.',
+  },
+  {
+    orderIndex: 5,
+    subject: 'Tai nghe bị rè một bên',
+    message: 'Nhận hàng dùng 2 ngày thì tai trái bị rè, mình muốn đổi cái khác.',
+    category: TicketCategory.DOI_TRA,
+  },
+];
+
 async function main(): Promise<void> {
   const password = assertSafeEnvironment();
   const random = createRandom(RANDOM_SEED);
@@ -168,7 +205,7 @@ async function main(): Promise<void> {
   try {
     await prisma.$transaction(
       async (tx) => {
-        await tx.$executeRaw`TRUNCATE TABLE email_deliveries, order_status_history, cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
+        await tx.$executeRaw`TRUNCATE TABLE return_requests, pending_actions, ticket_messages, tickets, email_deliveries, order_status_history, cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
 
         const categories = await tx.category.createManyAndReturn({
           data: CATEGORIES.map(({ name, slug }) => ({ name, slug })),
@@ -277,6 +314,35 @@ async function main(): Promise<void> {
         await tx.orderStatusHistory.createMany({ data: history });
         // Mã seed được gán tay SF-000001..; đơn tạo qua API tiếp nối từ SF-000051.
         await tx.$queryRaw`SELECT setval('order_code_seq', ${ORDER_COUNT})`;
+
+        // Ticket hỗ trợ mẫu (F06). Seed không phát event nên không có job phân loại:
+        // gán nhóm sẵn (nguồn STAFF) để hàng chờ không có ticket "chưa phân loại" mãi.
+        const support = createdUsers.find((u) => u.role === Role.SUPPORT)!;
+        for (const [index, sample] of SAMPLE_TICKETS.entries()) {
+          const order = orders[sample.orderIndex]!;
+          const at = new Date(now - (SAMPLE_TICKETS.length - index) * 60 * 60_000);
+          await tx.ticket.create({
+            data: {
+              customerId: order.userId,
+              orderId: order.id,
+              subject: sample.subject,
+              category: sample.category,
+              categorySource: CategorySource.STAFF,
+              classifiedAt: at,
+              status: sample.reply ? TicketStatus.ANSWERED : TicketStatus.OPEN,
+              createdAt: at,
+              lastMessageAt: at,
+              messages: {
+                create: [
+                  { authorId: order.userId, body: sample.message, createdAt: at },
+                  ...(sample.reply
+                    ? [{ authorId: support.id, body: sample.reply, createdAt: at }]
+                    : []),
+                ],
+              },
+            },
+          });
+        }
       },
       { timeout: 60_000 },
     );

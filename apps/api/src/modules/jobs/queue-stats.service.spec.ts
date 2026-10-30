@@ -13,6 +13,7 @@ describe('QueueStatsService', () => {
       queue('email', { waiting: 2, active: 1, delayed: 5, completed: 10, failed: 0 }),
       queue('invoice', { completed: 3 }),
       queue('inventory-sync', { failed: 1 }),
+      queue('ticket-classify', { waiting: 4 }),
       queue('dead-letter', { waiting: 1 }),
     );
 
@@ -22,6 +23,7 @@ describe('QueueStatsService', () => {
       { name: 'email', waiting: 2, active: 1, delayed: 5, completed: 10, failed: 0 },
       { name: 'invoice', waiting: 0, active: 0, delayed: 0, completed: 3, failed: 0 },
       { name: 'inventory-sync', waiting: 0, active: 0, delayed: 0, completed: 0, failed: 1 },
+      { name: 'ticket-classify', waiting: 4, active: 0, delayed: 0, completed: 0, failed: 0 },
       { name: 'dead-letter', waiting: 1, active: 0, delayed: 0, completed: 0, failed: 0 },
     ]);
   });
@@ -32,7 +34,7 @@ describe('QueueStatsService', () => {
       name: 'email',
       getJobCounts: jest.fn().mockRejectedValue(new Error('down')),
     } as unknown as Queue;
-    const service = new QueueStatsService(broken, broken, broken, broken);
+    const service = new QueueStatsService(broken, broken, broken, broken, broken);
 
     await expect(service.getStats()).rejects.toMatchObject({
       status: 503,
@@ -43,7 +45,7 @@ describe('QueueStatsService', () => {
 
   it('sessionMaxAgeMs = thời gian còn lại của access token', () => {
     const service = new QueueStatsService(
-      ...([0, 1, 2, 3].map(() => queue('q', {})) as [Queue, Queue, Queue, Queue]),
+      ...([0, 1, 2, 3, 4].map(() => queue('q', {})) as [Queue, Queue, Queue, Queue, Queue]),
     );
     const payload = Buffer.from(JSON.stringify({ sub: 'a', exp: 1_000 })).toString('base64url');
 

@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../../config/env.validation';
+import { SupportModule } from '../support/support.module';
 import { DeadLetterService } from './dead-letter.service';
 import { EmailDeliveriesRepository } from './email-deliveries.repository';
 import { EmailJobsService } from './email-jobs.service';
@@ -13,15 +14,23 @@ import { MAIL_SENDER, SmtpMailSender } from './mail-sender';
 import { OrderJobsListener } from './order-jobs.listener';
 import { OrderJobsService } from './order-jobs.service';
 import { FakePartnerInventoryClient, PARTNER_INVENTORY_CLIENT } from './partner-inventory.client';
-import { EmailProcessor, InventorySyncProcessor, InvoiceProcessor } from './processors';
+import {
+  EmailProcessor,
+  InventorySyncProcessor,
+  InvoiceProcessor,
+  TicketClassifyProcessor,
+} from './processors';
 import { queueConnection } from './queue-connection';
 import { QueueStatsService } from './queue-stats.service';
+import { TicketJobsListener } from './ticket-jobs.listener';
 import { DEAD_LETTER_JOB_OPTIONS, DEAD_LETTER_QUEUE, jobOptionsFor, WORKER_QUEUES } from './queues';
 import { WorkersBootstrapService } from './workers-bootstrap.service';
 
 /** Background jobs trên BullMQ (F05, ADR-0009). */
 @Module({
   imports: [
+    // Worker ticket-classify gọi TicketClassifierService.
+    SupportModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
@@ -49,6 +58,7 @@ import { WorkersBootstrapService } from './workers-bootstrap.service';
   controllers: [JobsAdminController],
   providers: [
     OrderJobsListener,
+    TicketJobsListener,
     OrderJobsService,
     EmailJobsService,
     InvoiceService,
@@ -60,6 +70,7 @@ import { WorkersBootstrapService } from './workers-bootstrap.service';
     EmailProcessor,
     InvoiceProcessor,
     InventorySyncProcessor,
+    TicketClassifyProcessor,
     WorkersBootstrapService,
     { provide: MAIL_SENDER, useClass: SmtpMailSender },
     { provide: PARTNER_INVENTORY_CLIENT, useClass: FakePartnerInventoryClient },

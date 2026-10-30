@@ -1,6 +1,7 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, UnrecoverableError } from 'bullmq';
+import { TicketClassifierService } from '../support/ticket-classifier.service';
 import { DeadLetterService } from './dead-letter.service';
 import { EmailJobResult, EmailJobsService } from './email-jobs.service';
 import { InventorySyncService } from './inventory-sync.service';
@@ -13,6 +14,8 @@ import {
   InventorySyncJob,
   INVOICE_QUEUE,
   OrderJobData,
+  TICKET_CLASSIFY_QUEUE,
+  TicketJobData,
 } from './queues';
 
 // Processor chỉ định tuyến job → service (logic + unit test nằm ở service).
@@ -101,5 +104,21 @@ export class InventorySyncProcessor extends ReportingWorkerHost {
       throw new UnrecoverableError(`Unknown inventory-sync job "${job.name}"`);
     }
     return this.inventorySync.sync(job.name, job.data.orderId, job.id ?? job.name);
+  }
+}
+
+@Processor(TICKET_CLASSIFY_QUEUE, { autorun: false, concurrency: 3 })
+export class TicketClassifyProcessor extends ReportingWorkerHost {
+  constructor(
+    private readonly classifier: TicketClassifierService,
+    deadLetters: DeadLetterService,
+  ) {
+    super(TICKET_CLASSIFY_QUEUE, deadLetters);
+  }
+
+  process(job: Job<TicketJobData>) {
+    // Lần thử cuối: service gán KHAC thay vì ném lỗi, ticket không kẹt "chưa phân loại".
+    const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    return this.classifier.classify(job.data.ticketId, { finalAttempt });
   }
 }

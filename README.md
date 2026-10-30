@@ -255,6 +255,35 @@ s.on('connect_error', (e) => console.log(e.data));"
 
 Chạy nhiều instance (blue-green): mọi instance trỏ cùng `REDIS_URL`; emit ở instance này tới được client nối vào instance khác. Nginx cần `location /socket.io/` có header `Upgrade` (`infra/nginx/api.conf`).
 
+#### Ticket hỗ trợ và trợ lý AI
+
+Khách tạo ticket và nhắn tin; nhân viên hỗ trợ trả lời. Ticket mới được LLM phân loại ở nền (queue `ticket-classify`) vào `DON_HANG`, `VAN_CHUYEN`, `THANH_TOAN`, `DOI_TRA`, `SAN_PHAM` hoặc `KHAC`. Nhân viên hỏi trợ lý AI; trợ lý tra đơn/tồn kho bằng tool, còn huỷ đơn hay đổi trả thì **chỉ tạo đề xuất chờ người xác nhận** ([ADR-0011](docs/adr/0011-ai-agent-human-in-the-loop.md)).
+
+| Method | Endpoint                                   | Quyền                      | Mô tả                                                               |
+| ------ | ------------------------------------------ | -------------------------- | ------------------------------------------------------------------- |
+| POST   | `/api/support/tickets`                     | CUSTOMER                   | Tạo ticket (`subject`, `message`, `orderId?`), có `Idempotency-Key` |
+| GET    | `/api/support/tickets/me`                  | CUSTOMER                   | Ticket của tôi                                                      |
+| GET    | `/api/support/tickets`                     | SUPPORT, ADMIN             | Hàng chờ, lọc `status`, `category`                                  |
+| GET    | `/api/support/tickets/:id`                 | chủ ticket, SUPPORT, ADMIN | Chi tiết + tin nhắn                                                 |
+| POST   | `/api/support/tickets/:id/messages`        | chủ ticket, SUPPORT, ADMIN | Nhắn tin (khách → `OPEN`, nhân viên → `ANSWERED`)                   |
+| PATCH  | `/api/support/tickets/:id`                 | SUPPORT, ADMIN             | Đóng/mở lại, sửa nhóm bằng tay                                      |
+| POST   | `/api/support/tickets/:id/assistant`       | SUPPORT, ADMIN             | Hỏi trợ lý AI (`question`)                                          |
+| GET    | `/api/support/pending-actions`             | SUPPORT, ADMIN             | Đề xuất của trợ lý, lọc `status`                                    |
+| POST   | `/api/support/pending-actions/:id/confirm` | SUPPORT, ADMIN             | Xác nhận → **lúc này mới** huỷ đơn / tạo yêu cầu đổi trả            |
+| POST   | `/api/support/pending-actions/:id/reject`  | SUPPORT, ADMIN             | Từ chối, không thực thi gì                                          |
+
+Bật LLM trong `.env` (mặc định `LLM_PROVIDER=disabled`: ticket vẫn dùng được, nhóm = `KHAC`, trợ lý trả 503):
+
+```bash
+LLM_PROVIDER=anthropic        # hoặc openai / google (Gemini – AI Studio); hai loại này bắt buộc LLM_MODEL
+LLM_API_KEY=<khoá của bạn>    # không commit
+# LLM_MODEL=claude-opus-5-5   # mặc định của anthropic
+```
+
+Luồng thử trên Swagger (`/docs`): đăng nhập `support01@shopfast.local`, mở ticket mẫu "Muốn huỷ đơn vừa đặt" (seed), gọi `/assistant` với "Khách muốn huỷ đơn, xử lý giúp" → response có `pendingActions[0]` trạng thái `PENDING`, đơn **chưa** đổi → gọi `/pending-actions/{id}/confirm` → đơn `CANCELLED`, đã hoàn kho. Kiểm nhanh cả luồng với LLM thật: `pnpm --filter @shopfast/api smoke:llm`.
+
+Response của `/assistant` có `outcome`: `answered`, `out_of_scope` (câu hỏi ngoài ShopFast bị từ chối), `limit_reached` (hết `AGENT_MAX_TOOL_ROUNDS`), `ungrounded` (câu trả lời nêu thông tin đơn/tồn kho chưa tra bằng tool nên bị chặn). LLM lỗi hoặc quá `AGENT_TIMEOUT_MS` → 503 `AI_UNAVAILABLE`.
+
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 
 Giữ postgres/redis trong Docker, dừng container api rồi chạy api bằng Node trên host. `.env` ở gốc đã trỏ `localhost`:

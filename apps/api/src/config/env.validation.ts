@@ -56,6 +56,21 @@ export interface EnvironmentVariables {
   REPORT_TIMEZONE: string;
   /** Số đơn tối đa một kết nối WebSocket được theo dõi cùng lúc (F02, ADR-0010). */
   WS_MAX_SUBSCRIPTIONS: number;
+  /** Nhà cung cấp LLM cho phân loại ticket và trợ lý AI (F06, ADR-0011); `disabled` = tắt AI. */
+  LLM_PROVIDER: 'anthropic' | 'openai' | 'google' | 'disabled';
+  LLM_API_KEY?: string;
+  /** Tên model; bỏ trống với anthropic thì dùng mặc định. */
+  LLM_MODEL?: string;
+  /** Endpoint khác mặc định (proxy, gateway hoặc dịch vụ tương thích OpenAI). */
+  LLM_BASE_URL?: string;
+  /** Timeout mỗi lời gọi LLM (ms). */
+  LLM_TIMEOUT_MS: number;
+  /** Số vòng gọi model tối đa trong một lượt hỏi trợ lý. */
+  AGENT_MAX_TOOL_ROUNDS: number;
+  /** Thời gian tối đa của cả một lượt hỏi trợ lý (ms). */
+  AGENT_TIMEOUT_MS: number;
+  RATE_LIMIT_AI_ASSISTANT: string;
+  RATE_LIMIT_TICKET_CREATE: string;
 }
 
 const RATE_LIMIT_PATTERN = /^[1-9]\d*\/[1-9]\d*$/;
@@ -120,4 +135,24 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   PARTNER_LATENCY_MS: Joi.number().integer().min(0).max(60_000).default(200),
   REPORT_TIMEZONE: Joi.string().default('Asia/Ho_Chi_Minh'),
   WS_MAX_SUBSCRIPTIONS: Joi.number().integer().min(1).max(1000).default(50),
+  LLM_PROVIDER: Joi.string().valid('anthropic', 'openai', 'google', 'disabled').default('disabled'),
+  LLM_API_KEY: Joi.when('LLM_PROVIDER', {
+    is: 'disabled',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().min(1).required(),
+  }),
+  LLM_MODEL: Joi.when('LLM_PROVIDER', {
+    is: Joi.valid('openai', 'google'),
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  LLM_BASE_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
+  LLM_TIMEOUT_MS: Joi.number().integer().min(1_000).max(300_000).default(20_000),
+  AGENT_MAX_TOOL_ROUNDS: Joi.number().integer().min(1).max(20).default(5),
+  AGENT_TIMEOUT_MS: Joi.number().integer().min(1_000).max(600_000).default(45_000),
+  RATE_LIMIT_AI_ASSISTANT: Joi.string().pattern(RATE_LIMIT_PATTERN).default('20/60'),
+  RATE_LIMIT_TICKET_CREATE: Joi.string().pattern(RATE_LIMIT_PATTERN).default('5/300'),
 });

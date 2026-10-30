@@ -4,7 +4,13 @@ import { Queue } from 'bullmq';
 import { AppException } from '../../common/exceptions/app.exception';
 import { accessTokenRemainingMs } from '../auth/token.service';
 import { QueuesStatsDto } from './dto/queue-stats.response';
-import { DEAD_LETTER_QUEUE, EMAIL_QUEUE, INVENTORY_SYNC_QUEUE, INVOICE_QUEUE } from './queues';
+import {
+  DEAD_LETTER_QUEUE,
+  EMAIL_QUEUE,
+  INVENTORY_SYNC_QUEUE,
+  INVOICE_QUEUE,
+  TICKET_CLASSIFY_QUEUE,
+} from './queues';
 
 const STATS_TIMEOUT_MS = 2_000;
 
@@ -18,9 +24,10 @@ export class QueueStatsService {
     @InjectQueue(EMAIL_QUEUE) email: Queue,
     @InjectQueue(INVOICE_QUEUE) invoice: Queue,
     @InjectQueue(INVENTORY_SYNC_QUEUE) inventorySync: Queue,
+    @InjectQueue(TICKET_CLASSIFY_QUEUE) ticketClassify: Queue,
     @InjectQueue(DEAD_LETTER_QUEUE) deadLetter: Queue,
   ) {
-    this.queues = [email, invoice, inventorySync, deadLetter];
+    this.queues = [email, invoice, inventorySync, ticketClassify, deadLetter];
   }
 
   async getStats(): Promise<QueuesStatsDto> {

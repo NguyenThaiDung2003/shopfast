@@ -16,6 +16,7 @@ import {
   PartnerUnavailableError,
 } from '../src/modules/jobs/partner-inventory.client';
 import {
+  ALL_QUEUES,
   DAILY_REPORT_CRON,
   DAILY_REPORT_SCHEDULER_ID,
   DEAD_LETTER_QUEUE,
@@ -450,9 +451,7 @@ describe('Background jobs (e2e)', () => {
       const names = (
         board.body.queues as Array<{ name: string; counts: Record<string, number> }>
       ).map((q) => q.name);
-      expect(names.sort()).toEqual(
-        [DEAD_LETTER_QUEUE, EMAIL_QUEUE, INVENTORY_SYNC_QUEUE, INVOICE_QUEUE].sort(),
-      );
+      expect(names.sort()).toEqual([...ALL_QUEUES].sort());
     });
 
     it('GET /api/admin/queues/stats: số job chờ/chạy/hoàn tất/thất bại của từng queue', async () => {
@@ -465,9 +464,7 @@ describe('Background jobs (e2e)', () => {
       const byName = Object.fromEntries(
         (body.queues as Array<Record<string, number | string>>).map((q) => [q.name, q]),
       );
-      expect(Object.keys(byName).sort()).toEqual(
-        [DEAD_LETTER_QUEUE, EMAIL_QUEUE, INVENTORY_SYNC_QUEUE, INVOICE_QUEUE].sort(),
-      );
+      expect(Object.keys(byName).sort()).toEqual([...ALL_QUEUES].sort());
       expect(byName[EMAIL_QUEUE]).toEqual({
         name: EMAIL_QUEUE,
         waiting: expect.any(Number),

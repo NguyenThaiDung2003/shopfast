@@ -30,6 +30,13 @@ const productDetailSelect = {
 export type ProductListItem = Prisma.ProductGetPayload<{ select: typeof productListSelect }>;
 export type ProductDetail = Prisma.ProductGetPayload<{ select: typeof productDetailSelect }>;
 
+export interface ProductStock {
+  id: number;
+  sku: string;
+  name: string;
+  stock: number;
+}
+
 export interface PriceStock {
   price: number;
   stock: number;
@@ -73,6 +80,13 @@ export class CatalogRepository {
 
   findById(id: number): Promise<ProductDetail | null> {
     return this.prisma.product.findUnique({ where: { id }, select: productDetailSelect });
+  }
+
+  findStockBySku(sku: string): Promise<ProductStock | null> {
+    return this.prisma.product.findUnique({
+      where: { sku },
+      select: { id: true, sku: true, name: true, stock: true },
+    });
   }
 
   /**

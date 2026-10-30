@@ -42,6 +42,12 @@ model User {
   cartItems     CartItem[]
   statusChanges OrderStatusHistory[]
 
+  tickets                Ticket[]
+  ticketMessages         TicketMessage[]
+  proposedPendingActions PendingAction[] @relation("PendingActionProposedBy")
+  decidedPendingActions  PendingAction[] @relation("PendingActionDecidedBy")
+  createdReturnRequests  ReturnRequest[]
+
   @@map("users")
 }
 
@@ -107,9 +113,12 @@ model Order {
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 
-  user          User                 @relation(fields: [userId], references: [id])
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
+  user           User                 @relation(fields: [userId], references: [id])
+  items          OrderItem[]
+  statusHistory  OrderStatusHistory[]
+  tickets        Ticket[]
+  pendingActions PendingAction[]
+  returnRequests ReturnRequest[]
 
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
@@ -207,4 +216,144 @@ model EmailDelivery {
 
   @@unique([kind, ref])
   @@map("email_deliveries")
+}
+
+// ───────────── Support & AI agent (F06, ADR-0011) ─────────────
+
+/// Nhóm ticket cố định; LLM chỉ được trả một trong các giá trị này (kiểm lại trong code).
+enum TicketCategory {
+  DON_HANG
+  VAN_CHUYEN
+  THANH_TOAN
+  DOI_TRA
+  SAN_PHAM
+  KHAC
+}
+
+enum TicketStatus {
+  /// Đang chờ nhân viên trả lời.
+  OPEN
+  /// Nhân viên đã trả lời, chờ khách.
+  ANSWERED
+  CLOSED
+}
+
+/// Ai gán category: LLM, mặc định khi LLM lỗi/không khả dụng, hay nhân viên sửa tay.
+enum CategorySource {
+  LLM
+  FALLBACK
+  STAFF
+}
+
+model Ticket {
+  id             String          @id @default(uuid()) @db.Uuid
+  /// Mã hiển thị, ví dụ TK-000001. Sinh từ sequence ticket_code_seq (migration support_tickets).
+  code           String          @unique @default(dbgenerated("('TK-'::text || lpad((nextval('ticket_code_seq'::regclass))::text, 6, '0'::text))"))
+  customerId     String          @map("customer_id") @db.Uuid
+  /// Đơn liên quan (tuỳ chọn), phải thuộc chính khách tạo ticket.
+  orderId        String?         @map("order_id") @db.Uuid
+  subject        String
+  status         TicketStatus    @default(OPEN)
+  /// null = chưa phân loại (job ticket-classify chưa chạy xong).
+  category       TicketCategory?
+  categorySource CategorySource? @map("category_source")
+  classifiedAt   DateTime?       @map("classified_at")
+  /// Header Idempotency-Key của request tạo ticket; unique theo khách.
+  idempotencyKey String?         @map("idempotency_key")
+  lastMessageAt  DateTime        @default(now()) @map("last_message_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  customer       User            @relation(fields: [customerId], references: [id])
+  order          Order?          @relation(fields: [orderId], references: [id])
+  messages       TicketMessage[]
+  pendingActions PendingAction[]
+
+  @@unique([customerId, idempotencyKey])
+  @@index([status, lastMessageAt])
+  @@index([customerId, createdAt])
+  @@map("tickets")
+}
+
+/// Tin nhắn trong ticket – chỉ INSERT.
+model TicketMessage {
+  id        Int      @id @default(autoincrement())
+  ticketId  String   @map("ticket_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
+enum PendingActionType {
+  CANCEL_ORDER
+  CREATE_RETURN_REQUEST
+}
+
+/// PENDING → EXECUTING → EXECUTED | FAILED; PENDING → REJECTED. Chuyển bằng compare-and-set.
+enum PendingActionStatus {
+  PENDING
+  EXECUTING
+  EXECUTED
+  REJECTED
+  FAILED
+}
+
+/// Thao tác ghi do AI agent đề xuất; chỉ thực thi khi nhân viên xác nhận (ADR-0011).
+/// Partial unique (type, order_id) khi PENDING/EXECUTING thêm tay trong migration.
+model PendingAction {
+  id           String              @id @default(uuid()) @db.Uuid
+  type         PendingActionType
+  status       PendingActionStatus @default(PENDING)
+  ticketId     String?             @map("ticket_id") @db.Uuid
+  orderId      String              @map("order_id") @db.Uuid
+  /// Tham số của thao tác, ví dụ { "reason": "..." }.
+  payload      Json
+  /// Mô tả tiếng Việt cho nhân viên đọc trước khi xác nhận.
+  summary      String
+  proposedById String              @map("proposed_by_id") @db.Uuid
+  decidedById  String?             @map("decided_by_id") @db.Uuid
+  decidedAt    DateTime?           @map("decided_at")
+  decisionNote String?             @map("decision_note")
+  /// Mã lỗi nghiệp vụ khi thực thi thất bại (FAILED).
+  errorCode    String?             @map("error_code")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  ticket        Ticket?        @relation(fields: [ticketId], references: [id])
+  order         Order          @relation(fields: [orderId], references: [id])
+  proposedBy    User           @relation("PendingActionProposedBy", fields: [proposedById], references: [id])
+  decidedBy     User?          @relation("PendingActionDecidedBy", fields: [decidedById], references: [id])
+  returnRequest ReturnRequest?
+
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@map("pending_actions")
+}
+
+enum ReturnRequestStatus {
+  REQUESTED
+}
+
+/// Yêu cầu đổi trả; hiện chỉ tạo qua PendingAction đã xác nhận.
+/// Partial unique: mỗi đơn tối đa một yêu cầu REQUESTED (thêm tay trong migration).
+model ReturnRequest {
+  id              String              @id @default(uuid()) @db.Uuid
+  orderId         String              @map("order_id") @db.Uuid
+  reason          String
+  status          ReturnRequestStatus @default(REQUESTED)
+  createdById     String              @map("created_by_id") @db.Uuid
+  pendingActionId String?             @unique @map("pending_action_id") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  order         Order          @relation(fields: [orderId], references: [id])
+  createdBy     User           @relation(fields: [createdById], references: [id])
+  pendingAction PendingAction? @relation(fields: [pendingActionId], references: [id])
+
+  @@index([orderId])
+  @@map("return_requests")
 }

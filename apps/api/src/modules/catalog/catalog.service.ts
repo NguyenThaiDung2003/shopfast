@@ -10,6 +10,7 @@ import {
   PriceStock,
   ProductDetail,
   ProductListItem,
+  ProductStock,
 } from './catalog.repository';
 import { ListProductsQuery } from './dto/list-products.query';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -51,6 +52,16 @@ export class CatalogService {
       );
       return toPage(items, total, page, limit);
     });
+  }
+
+  /**
+   * Tồn kho theo SKU, đọc thẳng DB (không qua cache) – dùng khi cần con số chính xác lúc này,
+   * ví dụ trợ lý AI trả lời nhân viên (F06).
+   */
+  async stockBySku(sku: string): Promise<ProductStock> {
+    const product = await this.catalogRepository.findStockBySku(sku.trim().toUpperCase());
+    if (!product) throw productNotFound();
+    return product;
   }
 
   async findOne(id: number): Promise<ProductDetail> {
