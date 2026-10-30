@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Express } from 'express';
 import { AppException } from './common/exceptions/app.exception';
 import type { EnvironmentVariables } from './config/env.validation';
+import { HEALTH_PATHS } from './modules/health/health.controller';
 import { setupBullBoard } from './modules/jobs/bull-board';
 import { RedisIoAdapter } from './modules/realtime/redis-io.adapter';
 
@@ -32,7 +33,10 @@ export function configureApp(app: INestApplication): void {
   const config = app.get(ConfigService<EnvironmentVariables, true>);
   const express = app.getHttpAdapter().getInstance() as Express;
   express.set('trust proxy', parseTrustProxy(config.get('TRUST_PROXY', { infer: true })));
-  app.setGlobalPrefix('api');
+  // /health, /health/live ngoài /api: endpoint cho hạ tầng (Docker, load balancer) – ADR-0012.
+  app.setGlobalPrefix('api', { exclude: HEALTH_PATHS });
+  // Đường dẫn cũ (deprecated): chuyển hướng để không vỡ nơi đang gọi.
+  express.get('/api/health', (_req, res) => res.redirect(308, '/health'));
   // Ngoài prefix /api, tự kiểm quyền ADMIN (ADR-0009).
   setupBullBoard(app);
   // Socket.IO tại /socket.io (ngoài /api), đồng bộ room giữa các instance qua Redis (ADR-0010).

@@ -20,6 +20,8 @@ process.env.RATE_LIMIT_AI_ASSISTANT = '100000/60';
 process.env.RATE_LIMIT_TICKET_CREATE = '100000/60';
 // Không bao giờ gọi LLM thật trong test; support.e2e-spec.ts thay provider bằng bản giả có kịch bản.
 process.env.LLM_PROVIDER = 'disabled';
+// Test gọi app.close() liên tục: không chờ load balancer rút traffic.
+process.env.SHUTDOWN_DRAIN_MS = '0';
 // Worker BullMQ tắt cho mọi suite (chỉ đẩy job); jobs.e2e-spec.ts tự bật (test/jobs.env.ts).
 process.env.QUEUE_WORKERS_ENABLED = 'false';
 process.env.QUEUE_PREFIX = 'test';

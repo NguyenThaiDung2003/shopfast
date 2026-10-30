@@ -71,6 +71,12 @@ export interface EnvironmentVariables {
   AGENT_TIMEOUT_MS: number;
   RATE_LIMIT_AI_ASSISTANT: string;
   RATE_LIMIT_TICKET_CREATE: string;
+  /** Thời gian tối đa mỗi kiểm tra của GET /health (ms). */
+  HEALTH_CHECK_TIMEOUT_MS: number;
+  /** Khi tắt: thời gian /health trả 503 trước khi ngừng nhận request, để load balancer rút traffic (ms). */
+  SHUTDOWN_DRAIN_MS: number;
+  /** Giới hạn cứng cho cả quá trình tắt; quá hạn thì thoát process (ms). */
+  SHUTDOWN_TIMEOUT_MS: number;
 }
 
 const RATE_LIMIT_PATTERN = /^[1-9]\d*\/[1-9]\d*$/;
@@ -155,4 +161,7 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   AGENT_TIMEOUT_MS: Joi.number().integer().min(1_000).max(600_000).default(45_000),
   RATE_LIMIT_AI_ASSISTANT: Joi.string().pattern(RATE_LIMIT_PATTERN).default('20/60'),
   RATE_LIMIT_TICKET_CREATE: Joi.string().pattern(RATE_LIMIT_PATTERN).default('5/300'),
+  HEALTH_CHECK_TIMEOUT_MS: Joi.number().integer().min(50).max(30_000).default(1_000),
+  SHUTDOWN_DRAIN_MS: Joi.number().integer().min(0).max(120_000).default(5_000),
+  SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1_000).max(600_000).default(25_000),
 });

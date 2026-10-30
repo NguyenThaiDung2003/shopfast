@@ -27,4 +27,5 @@ RUN mkdir -p /data/invoices && chown node:node /data/invoices
 USER node
 EXPOSE 3000
 # Áp migration rồi mới khởi động; migration lỗi thì container dừng, healthcheck không đạt.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+# `exec`: node thay chỗ sh nên nhận được SIGTERM (sh không chuyển tín hiệu) – tắt êm, ADR-0012.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/main"]

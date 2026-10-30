@@ -65,6 +65,10 @@ services:
       dockerfile: apps/api/Dockerfile
     image: shopfast-api:dev
     restart: unless-stopped
+    # Tắt êm (ADR-0012): tini (PID 1) chuyển SIGTERM cho node; Docker chờ lâu hơn
+    # SHUTDOWN_TIMEOUT_MS trước khi SIGKILL.
+    init: true
+    stop_grace_period: 35s
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,6 +115,7 @@ services:
       MAIL_FROM: ${MAIL_FROM:-ShopFast <no-reply@shopfast.local>}
       INVOICE_STORAGE_DIR: /data/invoices
       PARTNER_FAILURE_RATE: ${PARTNER_FAILURE_RATE:-0.3}
+      PARTNER_LATENCY_MS: ${PARTNER_LATENCY_MS:-200}
       REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Ho_Chi_Minh}
       # Realtime (F02, ADR-0010): Socket.IO tại /socket.io, đồng bộ nhiều instance qua Redis.
       WS_MAX_SUBSCRIPTIONS: ${WS_MAX_SUBSCRIPTIONS:-50}
@@ -124,6 +129,10 @@ services:
       AGENT_TIMEOUT_MS: ${AGENT_TIMEOUT_MS:-45000}
       RATE_LIMIT_AI_ASSISTANT: ${RATE_LIMIT_AI_ASSISTANT:-20/60}
       RATE_LIMIT_TICKET_CREATE: ${RATE_LIMIT_TICKET_CREATE:-5/300}
+      # Health & tắt êm (ADR-0012).
+      HEALTH_CHECK_TIMEOUT_MS: ${HEALTH_CHECK_TIMEOUT_MS:-1000}
+      SHUTDOWN_DRAIN_MS: ${SHUTDOWN_DRAIN_MS:-5000}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-25000}
       SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:3000'
@@ -131,7 +140,8 @@ services:
       - invoices:/data/invoices
     networks: [backend]
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1']
+      # Readiness: DB lỗi hoặc đang tắt → 503 → unhealthy; Redis lỗi → 200 degraded (vẫn healthy).
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health > /dev/null || exit 1']
       interval: 10s
       timeout: 3s
       retries: 5

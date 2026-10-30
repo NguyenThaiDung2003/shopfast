@@ -90,10 +90,10 @@ describe('Rate limit (e2e)', () => {
       await http.get('/api/products').set(from(sharedIp)).expect(200);
     });
 
-    it('/api/health không tính vào hạn mức', async () => {
+    it('/health không tính vào hạn mức', async () => {
       const ip = nextIp();
       for (let i = 0; i < LIMITS.global * 2; i++) {
-        await http.get('/api/health').set(from(ip)).expect(200);
+        await http.get('/health').set(from(ip)).expect(200);
       }
       await http.get('/api/products').set(from(ip)).expect(200);
     });

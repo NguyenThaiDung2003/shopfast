@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../../config/env.validation';
+import { HealthModule } from '../health/health.module';
 import { SupportModule } from '../support/support.module';
 import { DeadLetterService } from './dead-letter.service';
 import { EmailDeliveriesRepository } from './email-deliveries.repository';
@@ -31,6 +32,8 @@ import { WorkersBootstrapService } from './workers-bootstrap.service';
   imports: [
     // Worker ticket-classify gọi TicketClassifierService.
     SupportModule,
+    // Worker chờ ShutdownService.drained() trước khi đóng (ADR-0012).
+    HealthModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({

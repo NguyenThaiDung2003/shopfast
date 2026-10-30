@@ -29,7 +29,7 @@ describe('Swagger /docs (e2e)', () => {
     expect(doc.components.securitySchemes.bearer).toMatchObject({ type: 'http', scheme: 'bearer' });
   });
 
-  it('có đủ nhóm API chính, prefix /api', () => {
+  it('có đủ nhóm API chính, prefix /api (health ở ngoài)', () => {
     for (const path of [
       '/api/auth/login',
       '/api/products',
@@ -39,7 +39,8 @@ describe('Swagger /docs (e2e)', () => {
       '/api/orders/me',
       '/api/orders/{id}/status',
       '/api/users',
-      '/api/health',
+      '/health',
+      '/health/live',
     ]) {
       expect(Object.keys(doc.paths)).toContain(path);
     }

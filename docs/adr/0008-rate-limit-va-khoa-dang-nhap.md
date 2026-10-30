@@ -21,7 +21,7 @@ F03: chống lạm dụng API và chống dò mật khẩu. Ràng buộc:
 - **Tracker:** `user:<id>` khi đã đăng nhập, `ip:<req.ip>` khi chưa. `AppThrottlerGuard` là guard toàn cục đăng ký **sau** `JwtAuthGuard` (`RateLimitModule` import sau `AuthModule`), nên đã có `request.user`.
 - **Hạn mức `global`** áp cho mọi route. Key là `ratelimit:global:<tracker>`, không kèm tên route như mặc định của thư viện, nên đếm **gộp toàn API**.
 - **Hạn mức riêng** (`login`, `otpSend`, `promoOrder`) chỉ áp cho route gắn `@RateLimit(tên)`, key `ratelimit:<tên>:<tracker>`. Mỗi hạn mức là một biến env dạng `<số request>/<giây>`.
-- `/api/health` bỏ qua (`@SkipThrottle`).
+- `/health`, `/health/live` bỏ qua (`@SkipThrottle`, ADR-0012).
 - **IP thật:** `TRUST_PROXY` (Express `trust proxy`) bằng đúng số proxy đứng trước API. Nginx đặt `X-Forwarded-For $proxy_add_x_forwarded_for` ([infra/nginx/api.conf](../../infra/nginx/api.conf)).
 - **429:** `AppException(429, 'TOO_MANY_REQUESTS', …, { retryAfterSeconds })`. `HttpExceptionFilter` đặt header `Retry-After` cho mọi 429 có `details.retryAfterSeconds`; header riêng của thư viện (`X-RateLimit-*`, `Retry-After-<tên>`) tắt.
 

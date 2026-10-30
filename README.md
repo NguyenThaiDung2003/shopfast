@@ -64,7 +64,8 @@ Tài khoản mẫu (mật khẩu chung = `SEED_USER_PASSWORD` trong `.env`):
 ### 5. Gọi thử API
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:3000/health        # readiness: DB + Redis (200 ok | 200 degraded | 503)
+curl http://localhost:3000/health/live   # liveness: chỉ kiểm tiến trình
 
 # Danh sách sản phẩm: phân trang + lọc theo danh mục, thương hiệu, khoảng giá (VND) + sắp xếp
 curl "http://localhost:3000/api/products?page=1&limit=5"
@@ -283,6 +284,26 @@ LLM_API_KEY=<khoá của bạn>    # không commit
 Luồng thử trên Swagger (`/docs`): đăng nhập `support01@shopfast.local`, mở ticket mẫu "Muốn huỷ đơn vừa đặt" (seed), gọi `/assistant` với "Khách muốn huỷ đơn, xử lý giúp" → response có `pendingActions[0]` trạng thái `PENDING`, đơn **chưa** đổi → gọi `/pending-actions/{id}/confirm` → đơn `CANCELLED`, đã hoàn kho. Kiểm nhanh cả luồng với LLM thật: `pnpm --filter @shopfast/api smoke:llm`.
 
 Response của `/assistant` có `outcome`: `answered`, `out_of_scope` (câu hỏi ngoài ShopFast bị từ chối), `limit_reached` (hết `AGENT_MAX_TOOL_ROUNDS`), `ungrounded` (câu trả lời nêu thông tin đơn/tồn kho chưa tra bằng tool nên bị chặn). LLM lỗi hoặc quá `AGENT_TIMEOUT_MS` → 503 `AI_UNAVAILABLE`.
+
+#### Health check và tắt êm
+
+`GET /health` và `GET /health/live` nằm ngoài `/api` ([ADR-0012](docs/adr/0012-health-check-va-graceful-shutdown.md)). `/api/health` cũ chuyển hướng 308 sang `/health`.
+
+| Tình huống                       | `GET /health`                | `GET /health/live` |
+| -------------------------------- | ---------------------------- | ------------------ |
+| DB + Redis ổn                    | 200 `ok`                     | 200                |
+| Redis lỗi                        | 200 `degraded` (vẫn phục vụ) | 200                |
+| DB lỗi                           | 503                          | 200                |
+| Đang tắt (`docker compose stop`) | 503 `shutting_down`          | 200                |
+
+Khi nhận SIGTERM, API:
+
+1. Trả 503 ở `/health` trong `SHUTDOWN_DRAIN_MS` (5s) để load balancer rút traffic; request vẫn được phục vụ trong lúc đó.
+2. Đóng worker BullMQ, chờ job đang chạy xong.
+3. Đóng HTTP server (chờ request đang chạy) rồi mới đóng DB và Redis.
+4. Quá `SHUTDOWN_TIMEOUT_MS` (25s) thì tự thoát.
+
+Thử: đặt một đơn rồi `docker compose stop api` ngay, xem `docker compose logs api` (có `Shutdown: draining…` và `workers closed`, exit code 0).
 
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 

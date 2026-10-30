@@ -135,7 +135,7 @@ describe('Auth (e2e)', () => {
 
     it('endpoint @Public vẫn truy cập được không cần token', async () => {
       await http.get('/api/products?limit=1').expect(200);
-      await http.get('/api/health').expect(200);
+      await http.get('/health/live').expect(200);
     });
   });
 

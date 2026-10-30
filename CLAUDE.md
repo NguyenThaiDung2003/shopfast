@@ -107,6 +107,13 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Nội dung khách viết đưa vào prompt trong thẻ (`<ticket>`, `<ticket_context>`) và ghi rõ là dữ liệu, không phải chỉ dẫn.
 - `LlmError` → 503 `AI_UNAVAILABLE` tiếng Việt, không lộ provider/thông điệp gốc. Phân loại chạy ở queue `ticket-classify`; lần thử cuối lỗi → `KHAC` (FALLBACK), gán bằng `WHERE category IS NULL`.
 
+## Health & tắt êm (ADR-0012)
+
+- `GET /health` (readiness: DB + Redis) và `GET /health/live` (liveness) nằm **ngoài `/api`**; healthcheck Docker dùng `/health`. Phụ thuộc không bắt buộc (Redis…) lỗi → `degraded` 200, không 503; chỉ phụ thuộc bắt buộc (DB) lỗi mới 503.
+- Đóng tài nguyên (kết nối, client) ở **`onApplicationShutdown`**, không ở `onModuleDestroy` (hook đó chạy trước khi Nest ngừng nhận request).
+- Worker BullMQ mới phải thêm vào `processors` của `WorkersBootstrapService` để được đóng sau drain (chờ job đang chạy). Việc chạy lâu hơn `SHUTDOWN_TIMEOUT_MS` phải chia nhỏ hoặc idempotent để chạy lại.
+- Dockerfile phải `exec` tiến trình node (SIGTERM tới được Node); compose giữ `init: true` và `stop_grace_period` lớn hơn `SHUTDOWN_TIMEOUT_MS`.
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.

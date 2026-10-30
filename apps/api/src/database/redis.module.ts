@@ -1,4 +1,4 @@
-import { Global, Inject, Logger, Module, OnModuleDestroy } from '@nestjs/common';
+import { Global, Inject, Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import type { EnvironmentVariables } from '../config/env.validation';
@@ -33,10 +33,18 @@ import { REDIS_CLIENT } from './redis.constants';
   ],
   exports: [REDIS_CLIENT],
 })
-export class RedisModule implements OnModuleDestroy {
+export class RedisModule implements OnApplicationShutdown {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
-  async onModuleDestroy(): Promise<void> {
-    this.redis.disconnect();
+  /**
+   * Hook CUỐI khi tắt (ADR-0012): request và job đang chạy vẫn dùng được Redis tới lúc này.
+   * Đang kết nối thì QUIT (gửi hết lệnh dở), không thì ngắt luôn.
+   */
+  async onApplicationShutdown(): Promise<void> {
+    if (this.redis.status !== 'ready') {
+      this.redis.disconnect();
+      return;
+    }
+    await this.redis.quit().catch(() => this.redis.disconnect());
   }
 }
