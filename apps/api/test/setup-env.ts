@@ -16,3 +16,6 @@ process.env.RATE_LIMIT_GLOBAL = '100000/60';
 process.env.RATE_LIMIT_LOGIN = '100000/60';
 process.env.RATE_LIMIT_OTP_SEND = '100000/60';
 process.env.RATE_LIMIT_PROMO_ORDER = '100000/60';
+// Worker BullMQ tắt cho mọi suite (chỉ đẩy job); jobs.e2e-spec.ts tự bật (test/jobs.env.ts).
+process.env.QUEUE_WORKERS_ENABLED = 'false';
+process.env.QUEUE_PREFIX = 'test';

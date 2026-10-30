@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Express } from 'express';
 import { AppException } from './common/exceptions/app.exception';
 import type { EnvironmentVariables } from './config/env.validation';
+import { setupBullBoard } from './modules/jobs/bull-board';
 
 export function validationExceptionFactory(errors: ValidationError[]): AppException {
   const fields = errors.map((e) => e.property).join(', ');
@@ -31,6 +32,8 @@ export function configureApp(app: INestApplication): void {
   const express = app.getHttpAdapter().getInstance() as Express;
   express.set('trust proxy', parseTrustProxy(config.get('TRUST_PROXY', { infer: true })));
   app.setGlobalPrefix('api');
+  // Ngoài prefix /api, tự kiểm quyền ADMIN (ADR-0009).
+  setupBullBoard(app);
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

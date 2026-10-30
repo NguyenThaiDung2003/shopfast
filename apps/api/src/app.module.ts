@@ -8,6 +8,7 @@ import { PrismaModule } from './database/prisma.module';
 import { RedisModule } from './database/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { CartModule } from './modules/cart/cart.module';
@@ -36,6 +37,7 @@ import { UsersModule } from './modules/users/users.module';
     CatalogModule,
     CartModule,
     OrdersModule,
+    JobsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
 })

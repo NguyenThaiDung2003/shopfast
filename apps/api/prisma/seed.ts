@@ -168,7 +168,7 @@ async function main(): Promise<void> {
   try {
     await prisma.$transaction(
       async (tx) => {
-        await tx.$executeRaw`TRUNCATE TABLE order_status_history, cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
+        await tx.$executeRaw`TRUNCATE TABLE email_deliveries, order_status_history, cart_items, refresh_tokens, order_items, orders, products, brands, categories, users RESTART IDENTITY CASCADE`;
 
         const categories = await tx.category.createManyAndReturn({
           data: CATEGORIES.map(({ name, slug }) => ({ name, slug })),

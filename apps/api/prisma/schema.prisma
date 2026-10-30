@@ -186,3 +186,25 @@ model OrderStatusHistory {
   @@index([orderId, createdAt])
   @@map("order_status_history")
 }
+
+enum EmailDeliveryStatus {
+  SENDING
+  SENT
+}
+
+/// Sổ ghi email đã gửi (F05, ADR-0009): unique (kind, ref) → chạy lại job không gửi lần hai.
+/// Worker "claim" dòng (SENDING) trước khi gửi, gửi xong chuyển SENT; gửi lỗi thì xoá claim.
+model EmailDelivery {
+  id        Int                 @id @default(autoincrement())
+  /// Loại email: order-confirmation | payment-reminder | daily-revenue-report.
+  kind      String
+  /// Đối tượng: orderId, hoặc "<YYYY-MM-DD>:<adminId>" cho báo cáo ngày.
+  ref       String
+  recipient String
+  status    EmailDeliveryStatus @default(SENDING)
+  claimedAt DateTime            @default(now()) @map("claimed_at")
+  sentAt    DateTime?           @map("sent_at")
+
+  @@unique([kind, ref])
+  @@map("email_deliveries")
+}

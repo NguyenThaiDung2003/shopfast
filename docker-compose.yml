@@ -51,6 +51,14 @@ services:
       timeout: 3s
       retries: 10
 
+  # SMTP giả cho dev: bắt mọi email (không gửi ra ngoài), xem tại http://127.0.0.1:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025' # DEV ONLY – giao diện web
+    networks: [backend]
+
   api:
     build:
       context: .
@@ -62,6 +70,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -89,9 +99,24 @@ services:
       LOGIN_MAX_FAILED_ATTEMPTS: ${LOGIN_MAX_FAILED_ATTEMPTS:-5}
       LOGIN_FAILURE_WINDOW_SECONDS: ${LOGIN_FAILURE_WINDOW_SECONDS:-900}
       LOGIN_LOCKOUT_STEPS_SECONDS: ${LOGIN_LOCKOUT_STEPS_SECONDS:-60,300,1800}
+      # Background jobs (F05, ADR-0009). Email đi qua Mailpit ở dev; production đặt SMTP thật.
+      QUEUE_WORKERS_ENABLED: ${QUEUE_WORKERS_ENABLED:-true}
+      QUEUE_BACKOFF_BASE_MS: ${QUEUE_BACKOFF_BASE_MS:-2000}
+      PAYMENT_REMINDER_DELAY_MS: ${PAYMENT_REMINDER_DELAY_MS:-1800000}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-ShopFast <no-reply@shopfast.local>}
+      INVOICE_STORAGE_DIR: /data/invoices
+      PARTNER_FAILURE_RATE: ${PARTNER_FAILURE_RATE:-0.3}
+      REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Ho_Chi_Minh}
       SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:3000'
+    volumes:
+      - invoices:/data/invoices
     networks: [backend]
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1']
@@ -106,3 +131,4 @@ networks:
 volumes:
   pgdata:
   redisdata:
+  invoices:

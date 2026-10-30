@@ -45,9 +45,6 @@ describe('Rate limit (e2e)', () => {
   beforeAll(async () => {
     ({ app } = await createTestApp());
     http = request(app.getHttpServer());
-    // Lệnh gửi trước khi Redis kết nối xong bị cho qua (fail-open) và không được đếm.
-    const redis = app.get<Redis>(REDIS_CLIENT);
-    if (redis.status !== 'ready') await new Promise((resolve) => redis.once('ready', resolve));
   });
 
   afterAll(async () => {

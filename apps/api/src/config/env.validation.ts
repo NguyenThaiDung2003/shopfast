@@ -35,6 +35,25 @@ export interface EnvironmentVariables {
   LOGIN_FAILURE_WINDOW_SECONDS: number;
   /** Thời gian khoá tăng dần, phân tách bằng dấu phẩy (giây). */
   LOGIN_LOCKOUT_STEPS_SECONDS: string;
+  /** Chạy worker BullMQ trong process này (F05, ADR-0009); tắt để instance chỉ phục vụ API. */
+  QUEUE_WORKERS_ENABLED: boolean;
+  /** Tiền tố key Redis của BullMQ. */
+  QUEUE_PREFIX: string;
+  /** Nền của backoff exponential (ms); lần thử thứ n chờ khoảng nền × hệ số queue × 2^(n-1). */
+  QUEUE_BACKOFF_BASE_MS: number;
+  PAYMENT_REMINDER_DELAY_MS: number;
+  SMTP_HOST: string;
+  SMTP_PORT: number;
+  SMTP_SECURE: boolean;
+  SMTP_USER?: string;
+  SMTP_PASSWORD?: string;
+  MAIL_FROM: string;
+  INVOICE_STORAGE_DIR: string;
+  /** Tỉ lệ lỗi ngẫu nhiên của API đối tác giả lập (0–1), để demo retry. */
+  PARTNER_FAILURE_RATE: number;
+  PARTNER_LATENCY_MS: number;
+  /** Múi giờ cho lịch báo cáo 0h và cách tính "hôm qua". */
+  REPORT_TIMEZONE: string;
 }
 
 const RATE_LIMIT_PATTERN = /^[1-9]\d*\/[1-9]\d*$/;
@@ -79,4 +98,23 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   LOGIN_LOCKOUT_STEPS_SECONDS: Joi.string()
     .pattern(/^[1-9]\d*(,[1-9]\d*)*$/)
     .default('60,300,1800'),
+  QUEUE_WORKERS_ENABLED: Joi.boolean().default(true),
+  QUEUE_PREFIX: Joi.string()
+    .pattern(/^[a-z0-9_-]+$/i)
+    .default('bull'),
+  QUEUE_BACKOFF_BASE_MS: Joi.number().integer().min(1).max(600_000).default(2000),
+  PAYMENT_REMINDER_DELAY_MS: Joi.number()
+    .integer()
+    .min(1)
+    .default(30 * 60 * 1000),
+  SMTP_HOST: Joi.string().hostname().default('localhost'),
+  SMTP_PORT: Joi.number().port().default(1025),
+  SMTP_SECURE: Joi.boolean().default(false),
+  SMTP_USER: Joi.string().allow('').optional(),
+  SMTP_PASSWORD: Joi.string().allow('').optional(),
+  MAIL_FROM: Joi.string().default('ShopFast <no-reply@shopfast.local>'),
+  INVOICE_STORAGE_DIR: Joi.string().default('./storage/invoices'),
+  PARTNER_FAILURE_RATE: Joi.number().min(0).max(1).default(0.3),
+  PARTNER_LATENCY_MS: Joi.number().integer().min(0).max(60_000).default(200),
+  REPORT_TIMEZONE: Joi.string().default('Asia/Ho_Chi_Minh'),
 });

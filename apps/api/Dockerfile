@@ -22,6 +22,8 @@ ENV PORT=3000
 # Không --chown: user node chỉ cần quyền đọc; chown cả node_modules làm build rất chậm.
 COPY --from=build /app /app
 WORKDIR /app/apps/api
+# Thư mục hoá đơn PDF (volume `invoices`); volume mới nhận quyền sở hữu từ thư mục này.
+RUN mkdir -p /data/invoices && chown node:node /data/invoices
 USER node
 EXPOSE 3000
 # Áp migration rồi mới khởi động; migration lỗi thì container dừng, healthcheck không đạt.

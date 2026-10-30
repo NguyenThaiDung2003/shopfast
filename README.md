@@ -33,7 +33,7 @@ Thay mọi giá trị `change-me` (mật khẩu chỉ gồm chữ và số). T�
 
 ```bash
 docker compose up -d --build
-docker compose ps          # chờ cả 3 service ở trạng thái (healthy)
+docker compose ps          # chờ api, postgres, redis ở trạng thái (healthy)
 docker compose logs -f api # xem log; lúc khởi động api tự chạy `prisma migrate deploy`
 ```
 
@@ -42,6 +42,7 @@ docker compose logs -f api # xem log; lúc khởi động api tự chạy `prism
 | api      | http://localhost:3000/api |                                           |
 | postgres | 127.0.0.1:5432            | Chỉ publish cho dev, không lộ ra mạng LAN |
 | redis    | 127.0.0.1:6379            | Chỉ publish cho dev, có mật khẩu          |
+| mailpit  | http://127.0.0.1:8025     | SMTP giả: xem mọi email do job gửi (dev)  |
 
 ### 4. Nạp dữ liệu mẫu
 
@@ -195,6 +196,29 @@ EMAIL_HASH=$(printf '%s' 'customer01@shopfast.local' | sha256sum | cut -d' ' -f1
 docker compose exec redis redis-cli DEL \
   auth:login:fail:$EMAIL_HASH auth:login:strikes:$EMAIL_HASH auth:login:lock:$EMAIL_HASH
 ```
+
+#### Background jobs (email, hoá đơn, đồng bộ tồn kho)
+
+Đặt đơn và đổi trạng thái đơn đẩy job vào BullMQ; API trả về ngay, worker xử lý sau ([ADR-0009](docs/adr/0009-background-jobs-bullmq.md)).
+
+| Khi                   | Queue / job                                   | Ghi chú                                                       |
+| --------------------- | --------------------------------------------- | ------------------------------------------------------------- |
+| Đặt đơn               | `email` / `order-confirmation`                | Email xác nhận (Mailpit ở dev)                                |
+| Đặt đơn               | `inventory-sync` / `inventory-reserve`        | Gọi API đối tác giả lập, lỗi ngẫu nhiên 30% để demo retry     |
+| Đặt đơn + 30 phút     | `email` / `payment-reminder` (delayed)        | Chỉ gửi nếu đơn vẫn `PENDING_PAYMENT`                         |
+| Đơn → `PAID`          | `invoice` / `invoice`                         | PDF `<mã đơn>.pdf` trong volume `invoices` (`/data/invoices`) |
+| Đơn → `CANCELLED`     | `inventory-sync` / `inventory-release`        | Trả hàng cho đối tác                                          |
+| 0h hằng ngày (giờ VN) | `email` / `daily-revenue-report` (repeatable) | Doanh thu hôm qua gửi cho mọi ADMIN                           |
+
+Job lỗi tự thử lại (backoff exponential); hết lượt thử thì chuyển sang queue `dead-letter` kèm lý do. Chạy lại job không gửi email lần hai (bảng `email_deliveries`).
+
+| Method | Endpoint                    | Quyền | Mô tả                                                                  |
+| ------ | --------------------------- | ----- | ---------------------------------------------------------------------- |
+| GET    | `/api/admin/queues/stats`   | ADMIN | Số job đang chờ / đang chạy / hẹn giờ / hoàn tất / thất bại từng queue |
+| POST   | `/api/admin/queues/session` | ADMIN | Đặt cookie phiên để mở Bull Board trên trình duyệt (204)               |
+| GET    | `/admin/queues`             | ADMIN | Bull Board (ngoài `/api`)                                              |
+
+Mở Bull Board: đăng nhập admin trên Swagger (`/docs` → Authorize), gọi `POST /api/admin/queues/session`, rồi mở http://localhost:3000/admin/queues trên cùng trình duyệt. Demo dead-letter: `PARTNER_FAILURE_RATE=1 docker compose up -d api` rồi đặt một đơn.
 
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 

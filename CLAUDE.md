@@ -80,6 +80,15 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Lỗi 429 tự viết: `AppException(429, code, thôngĐiệp, { retryAfterSeconds })`. `HttpExceptionFilter` đặt `Retry-After` từ đó; thông điệp dùng `formatWait` (`common/messages/vi.ts`).
 - Đăng nhập sai bị đếm theo **email** (`LoginAttemptsService`), không theo IP; khoá kiểm trước bcrypt. Redis lỗi → rate limit và khoá cho qua + log cảnh báo.
 
+## Background jobs (ADR-0009)
+
+- BullMQ (`modules/jobs/`): queue `email`, `invoice`, `inventory-sync`, `dead-letter`; số lần thử + backoff exponential từng queue trong `queues.ts`. Job đẩy từ `OrderJobsListener` (event sau commit), API không chờ.
+- **jobId cố định** `<loại job>-<orderId>` (`orderJobId`, không dùng `:`); payload chỉ mang id, worker đọc lại DB và **kiểm lại trạng thái** khi chạy.
+- Email gửi qua `MailSender` và **phải** đi qua `EmailJobsService.deliverOnce` (giành quyền trong `email_deliveries` trước khi gửi). Email loại mới = thêm vào `EmailJob`, không gửi thẳng.
+- Processor chỉ định tuyến job → service, kế thừa `ReportingWorkerHost` (dead-letter + log lỗi worker). Lỗi thử lại vô ích → `UnrecoverableError`.
+- Kết nối Redis của BullMQ riêng (`queue-connection.ts`), không dùng `REDIS_CLIENT`. `QUEUE_WORKERS_ENABLED=false` → chỉ đẩy job (test tắt sẵn trong `setup-env.ts`; `jobs.e2e-spec.ts` tự bật).
+- Bull Board `/admin/queues` (ngoài `/api`) tự kiểm ADMIN bằng `TokenService`; Mailpit UI ở dev: `http://127.0.0.1:8025`.
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.

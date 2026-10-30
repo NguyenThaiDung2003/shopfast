@@ -8,3 +8,5 @@ coverage/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+# Hoá đơn PDF sinh ra khi chạy api trên host (INVOICE_STORAGE_DIR mặc định)
+storage/

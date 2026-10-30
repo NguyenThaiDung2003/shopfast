@@ -65,7 +65,6 @@ describe('Khoá đăng nhập theo email (e2e)', () => {
     ({ app } = await createTestApp());
     http = request(app.getHttpServer());
     redis = app.get<Redis>(REDIS_CLIENT);
-    if (redis.status !== 'ready') await new Promise((resolve) => redis.once('ready', resolve));
   });
 
   afterAll(async () => {
