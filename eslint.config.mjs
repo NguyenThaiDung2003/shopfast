@@ -8,7 +8,14 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**', '**/*.config.{js,cjs}'],
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/*.config.{js,cjs}',
+      // Bản export Google Stitch – chỉ là tài liệu tham chiếu.
+      'apps/web/design/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

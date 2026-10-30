@@ -2,3 +2,5 @@ dist
 coverage
 node_modules
 pnpm-lock.yaml
+# Bản export Google Stitch (tham chiếu thiết kế)
+apps/web/design

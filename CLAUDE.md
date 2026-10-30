@@ -114,6 +114,17 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Worker BullMQ mới phải thêm vào `processors` của `WorkersBootstrapService` để được đóng sau drain (chờ job đang chạy). Việc chạy lâu hơn `SHUTDOWN_TIMEOUT_MS` phải chia nhỏ hoặc idempotent để chạy lại.
 - Dockerfile phải `exec` tiến trình node (SIGTERM tới được Node); compose giữ `init: true` và `stop_grace_period` lớn hơn `SHUTDOWN_TIMEOUT_MS`.
 
+## Frontend (apps/web)
+
+- Design system "Modern Vietnamese Retail Flow" (`apps/web/design/DESIGN.md`, bản export Google Stitch – chỉ tham chiếu, không import). Token màu/font/bo góc/shadow nằm **duy nhất** ở `apps/web/tailwind.config.js`; component chỉ dùng tên token (`bg-primary-container`, `text-on-surface-variant`, `shadow-card`…), **không** mã hex hay màu mặc định Tailwind (`slate-*`, `red-*`…). Bo góc theo DESIGN.md (config Stitch đặt sai `full`).
+- Component dùng chung ở `src/components/ui` (import từ `components/ui`); icon = Material Symbols qua `<Icon name="…" />`. File `.tsx` chỉ export component (luật react-refresh) – hook/hằng/helper để file `.ts` riêng.
+- Gọi API **chỉ** qua `api/client.ts` (`api.get/post…`) và đọc dữ liệu server bằng TanStack Query; không `fetch` thẳng. Client tự gắn token, refresh **single-flight** khi 401 (refresh token xoay vòng, dùng một lần), chuẩn hoá lỗi thành `ApiError { status, code, message, details }`, 429 → `rateLimitStore` → `RateLimitBanner` đếm ngược theo `Retry-After`.
+- Phiên (`auth/session.ts`) lưu localStorage, vai trò đọc từ JWT **chỉ để điều hướng**; quyền thật do API kiểm. Đánh đổi: token đọc được nếu dính XSS – không dùng `dangerouslySetInnerHTML` với dữ liệu người dùng.
+- Route nhân viên khai báo ở `router/staff-nav.ts` (menu + vai trò); guard `RequireAuth roles={…}` (chưa đăng nhập → `/dang-nhap?next=`, sai vai trò → 403).
+- Trạng thái đơn → nhãn/màu chỉ ở `ORDER_STATUS_META` (`src/orders/order-status.ts`); type `OrderStatus` dùng chung với `realtime/order-socket.ts`.
+- Hiển thị tiền/thời gian qua `lib/format.ts` (`formatPrice` → `1.290.000 ₫`, giờ `Asia/Ho_Chi_Minh`).
+- Biến môi trường web có tiền tố `VITE_`, khai báo kiểu ở `src/vite-env.d.ts` và `apps/web/.env.example`. Không đặt secret ở web (mọi thứ trong bundle đều công khai).
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.

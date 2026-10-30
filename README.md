@@ -303,7 +303,7 @@ Khi nhận SIGTERM, API:
 3. Đóng HTTP server (chờ request đang chạy) rồi mới đóng DB và Redis.
 4. Quá `SHUTDOWN_TIMEOUT_MS` (25s) thì tự thoát.
 
-Thử: đặt một đơn rồi `docker compose stop api` ngay, xem `docker compose logs api` (có `Shutdown: draining…` và `workers closed`, exit code 0).
+Thử: đặt một đơn rồi `docker compose stop api` ngay, xem `docker compose logs api` (có `Shutdown: draining…` và `workers closed`). Exit code `143` là bình thường (Node tự kết thúc bằng SIGTERM sau khi dọn xong); `137` mới là bị SIGKILL.
 
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 
@@ -317,6 +317,8 @@ pnpm --filter @shopfast/api db:seed         # nạp dữ liệu mẫu
 pnpm --filter @shopfast/api start:dev
 pnpm --filter @shopfast/web dev             # UI demo tại http://localhost:5173
 ```
+
+**Giao diện web (`apps/web`)**: React 18 + Vite + Tailwind + React Router + TanStack Query. Dev server proxy `/api`, `/health`, `/docs`, `/socket.io` sang `localhost:3000`, nên chạy được cả khi api nằm trong Docker. Gốc API đặt bằng `VITE_API_BASE_URL` (mặc định `/api`, xem `apps/web/.env.example`). Đăng nhập bằng tài khoản seed (`customer01@shopfast.local`, `warehouse01@…`, `support01@…`, `admin01@…`, mật khẩu `SEED_USER_PASSWORD`): khách vào giao diện cửa hàng, nhân viên vào `/quan-tri`. Thiết kế gốc (Google Stitch) ở `apps/web/design/`.
 
 Lệnh kiểm tra chất lượng: `pnpm lint`, `pnpm test`, `pnpm test:cov`, `pnpm test:e2e`.
 

@@ -1,3 +1,32 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background font-sans text-body-md text-on-surface antialiased;
+  }
+}
+
+@layer components {
+  /* Icon Material Symbols: <span class="icon">search</span>. */
+  .icon {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 1.25rem;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    direction: ltr;
+    display: inline-block;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0;
+  }
+
+  .icon-filled {
+    font-variation-settings: 'FILL' 1;
+  }
+}
