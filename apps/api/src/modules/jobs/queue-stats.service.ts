@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { AppException } from '../../common/exceptions/app.exception';
+import { accessTokenRemainingMs } from '../auth/token.service';
 import { QueuesStatsDto } from './dto/queue-stats.response';
 import { DEAD_LETTER_QUEUE, EMAIL_QUEUE, INVENTORY_SYNC_QUEUE, INVOICE_QUEUE } from './queues';
 
@@ -59,10 +60,6 @@ export class QueueStatsService {
 
   /** Số giây còn lại của access token (đã được JwtAuthGuard kiểm), làm Max-Age cho cookie. */
   sessionMaxAgeMs(accessToken: string, now = Date.now()): number {
-    const [, payload] = accessToken.split('.');
-    const { exp } = JSON.parse(Buffer.from(payload ?? '', 'base64url').toString()) as {
-      exp?: number;
-    };
-    return exp ? Math.max(0, exp * 1000 - now) : 0;
+    return accessTokenRemainingMs(accessToken, now);
   }
 }

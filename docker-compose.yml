@@ -112,6 +112,8 @@ services:
       INVOICE_STORAGE_DIR: /data/invoices
       PARTNER_FAILURE_RATE: ${PARTNER_FAILURE_RATE:-0.3}
       REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Ho_Chi_Minh}
+      # Realtime (F02, ADR-0010): Socket.IO tại /socket.io, đồng bộ nhiều instance qua Redis.
+      WS_MAX_SUBSCRIPTIONS: ${WS_MAX_SUBSCRIPTIONS:-50}
       SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:3000'

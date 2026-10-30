@@ -220,6 +220,41 @@ Job lỗi tự thử lại (backoff exponential); hết lượt thử thì chuy�
 
 Mở Bull Board: đăng nhập admin trên Swagger (`/docs` → Authorize), gọi `POST /api/admin/queues/session`, rồi mở http://localhost:3000/admin/queues trên cùng trình duyệt. Demo dead-letter: `PARTNER_FAILURE_RATE=1 docker compose up -d api` rồi đặt một đơn.
 
+#### Theo dõi đơn realtime (WebSocket)
+
+Socket.IO tại `/socket.io` (ngoài `/api`, chỉ transport websocket), xác thực bằng access token ngay khi kết nối ([ADR-0010](docs/adr/0010-realtime-socketio-redis-adapter.md)).
+
+| Sự kiện             | Chiều           | Dữ liệu                                   | Ghi chú                                                                     |
+| ------------------- | --------------- | ----------------------------------------- | --------------------------------------------------------------------------- |
+| `order:subscribe`   | client → server | `{ orderId }`                             | Ack `{ ok: true, order: { id, code, status } }` hoặc `{ ok: false, error }` |
+| `order:unsubscribe` | client → server | `{ orderId }`                             | Ack `{ ok: true }`                                                          |
+| `order:updated`     | server → client | `{ orderId, code, from, to, occurredAt }` | Chỉ gửi tới client đã subscribe đơn đó                                      |
+
+Chỉ chủ đơn hoặc nhân viên (SUPPORT, WAREHOUSE, ADMIN) subscribe được; đơn của người khác trả `ORDER_NOT_FOUND`. Token sai/hết hạn → `connect_error` với `err.data = { code, message }`.
+
+Dùng trong `apps/web` (tự nối lại và tự subscribe lại sau khi mất mạng; Vite đã proxy `/socket.io`):
+
+```tsx
+import { useOrderTracking } from './realtime/useOrderTracking';
+
+const { statuses, connection, connectionError } = useOrderTracking([orderId], {
+  getAccessToken: () => auth.accessToken, // gọi lại ở mỗi lần nối lại → trả token đã refresh
+});
+// statuses[orderId] === 'PAID' …; connection: 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
+```
+
+Thử nhanh bằng Node (`TOKEN` của customer01, `ORDER_ID` từ `/api/orders/me`), rồi đổi trạng thái đơn bằng tài khoản kho:
+
+```bash
+cd apps/api && node -e "
+const s = require('socket.io-client').io('http://localhost:3000', { transports: ['websocket'], auth: { token: process.env.TOKEN } });
+s.on('connect', async () => console.log(await s.emitWithAck('order:subscribe', { orderId: process.env.ORDER_ID })));
+s.on('order:updated', (u) => console.log('order:updated', u));
+s.on('connect_error', (e) => console.log(e.data));"
+```
+
+Chạy nhiều instance (blue-green): mọi instance trỏ cùng `REDIS_URL`; emit ở instance này tới được client nối vào instance khác. Nginx cần `location /socket.io/` có header `Upgrade` (`infra/nginx/api.conf`).
+
 ### 6. Chạy api trực tiếp trên máy (hot reload)
 
 Giữ postgres/redis trong Docker, dừng container api rồi chạy api bằng Node trên host. `.env` ở gốc đã trỏ `localhost`:

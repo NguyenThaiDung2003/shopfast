@@ -37,8 +37,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     this.enabled = config.get('RATE_LIMIT_ENABLED', { infer: true });
   }
 
-  protected override async shouldSkip(): Promise<boolean> {
-    return !this.enabled;
+  /** Chỉ đếm request HTTP; message WebSocket không đi qua hạn mức này (ADR-0010). */
+  protected override async shouldSkip(context: ExecutionContext): Promise<boolean> {
+    return !this.enabled || context.getType() !== 'http';
   }
 
   protected override async handleRequest(requestProps: ThrottlerRequest): Promise<boolean> {

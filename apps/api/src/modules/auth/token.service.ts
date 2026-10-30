@@ -16,6 +16,22 @@ export function durationToSeconds(duration: string): number {
   return Number(duration.slice(0, -1)) * (DURATION_UNIT_SECONDS[unit] ?? 1);
 }
 
+/**
+ * Số ms còn lại tới `exp` của access token. Chỉ giải mã, KHÔNG kiểm chữ ký: gọi sau
+ * `verifyAccessToken` (cookie Bull Board, hẹn ngắt WebSocket khi token hết hạn).
+ */
+export function accessTokenRemainingMs(accessToken: string, now = Date.now()): number {
+  const [, payload] = accessToken.split('.');
+  try {
+    const { exp } = JSON.parse(Buffer.from(payload ?? '', 'base64url').toString()) as {
+      exp?: number;
+    };
+    return exp ? Math.max(0, exp * 1000 - now) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function hashRefreshToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }

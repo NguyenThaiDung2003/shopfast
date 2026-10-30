@@ -7,8 +7,9 @@ import { TokenService } from '../token.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 
-function contextWith(request: Record<string, unknown>): ExecutionContext {
+function contextWith(request: Record<string, unknown>, type = 'http'): ExecutionContext {
   return {
+    getType: () => type,
     getHandler: () => undefined,
     getClass: () => undefined,
     switchToHttp: () => ({ getRequest: () => request }),
@@ -67,5 +68,19 @@ describe('RolesGuard', () => {
     expect(() =>
       guard.canActivate(contextWith({ user: { id: 'c', role: Role.CUSTOMER } })),
     ).toThrow(expect.objectContaining({ code: 'FORBIDDEN_ROLE', userMessage: expect.any(String) }));
+  });
+});
+
+describe('Guard toàn cục với WebSocket', () => {
+  it('JwtAuthGuard và RolesGuard bỏ qua context ws (đã xác thực tại handshake)', async () => {
+    const verifyAccessToken = jest.fn();
+    const jwtGuard = new JwtAuthGuard(reflectorWith({}), {
+      verifyAccessToken,
+    } as unknown as TokenService);
+    const rolesGuard = new RolesGuard(reflectorWith({ [ROLES_KEY]: [Role.ADMIN] }));
+
+    await expect(jwtGuard.canActivate(contextWith({ headers: {} }, 'ws'))).resolves.toBe(true);
+    expect(rolesGuard.canActivate(contextWith({}, 'ws'))).toBe(true);
+    expect(verifyAccessToken).not.toHaveBeenCalled();
   });
 });

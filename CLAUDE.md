@@ -89,6 +89,15 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Kết nối Redis của BullMQ riêng (`queue-connection.ts`), không dùng `REDIS_CLIENT`. `QUEUE_WORKERS_ENABLED=false` → chỉ đẩy job (test tắt sẵn trong `setup-env.ts`; `jobs.e2e-spec.ts` tự bật).
 - Bull Board `/admin/queues` (ngoài `/api`) tự kiểm ADMIN bằng `TokenService`; Mailpit UI ở dev: `http://127.0.0.1:8025`.
 
+## Realtime (ADR-0010)
+
+- Socket.IO tại `/socket.io` (ngoài `/api`), **chỉ transport websocket**; `RedisIoAdapter` (`modules/realtime/`) đồng bộ room giữa các instance qua kết nối Redis riêng, không dùng `REDIS_CLIENT`.
+- Xác thực **tại handshake** (`auth.token` hoặc `Authorization: Bearer`) bằng `TokenService.verifyAccessToken`; token sai → `connect_error` `{ code, message }` tiếng Việt; hết hạn → server ngắt.
+- Gateway là tầng controller; kiểm quyền nằm ở `OrderTrackingService`, dùng lại `OrdersService.findOne` (chủ đơn hoặc nhân viên; không thuộc → `ORDER_NOT_FOUND`). Ack trả `{ ok, ... }`, không ném lỗi trong handler.
+- Emit **chỉ vào room** (`orderRoom(id)`), từ listener của domain event sau commit; payload không mang dữ liệu nội bộ (`note`, `changedBy`).
+- Guard toàn cục (`JwtAuthGuard`, `RolesGuard`, `AppThrottlerGuard`) bỏ qua context không phải `http`; guard mới cũng phải làm vậy.
+- Hợp đồng sự kiện khai báo ở `realtime.events.ts` và `apps/web/src/realtime/order-socket.ts` – đổi cả hai. E2E nhiều instance trong một process cần `EventEmitter2` riêng cho app thứ hai (`realtime.e2e-spec.ts`).
+
 ## Tài liệu API (Swagger)
 
 - UI tại `/docs`, JSON tại `/docs-json` (`src/swagger.ts`, bật bằng `SWAGGER_ENABLED`). Schema sinh bằng Nest CLI plugin (`nest-cli.json`) từ type + class-validator + **JSDoc**.

@@ -14,6 +14,8 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // WebSocket đã xác thực tại handshake (ADR-0010); guard này chỉ dành cho HTTP.
+    if (context.getType() !== 'http') return true;
     const isPublic = this.reflector.getAllAndOverride<boolean | undefined>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),

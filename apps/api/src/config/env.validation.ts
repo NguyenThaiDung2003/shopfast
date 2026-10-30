@@ -54,6 +54,8 @@ export interface EnvironmentVariables {
   PARTNER_LATENCY_MS: number;
   /** Múi giờ cho lịch báo cáo 0h và cách tính "hôm qua". */
   REPORT_TIMEZONE: string;
+  /** Số đơn tối đa một kết nối WebSocket được theo dõi cùng lúc (F02, ADR-0010). */
+  WS_MAX_SUBSCRIPTIONS: number;
 }
 
 const RATE_LIMIT_PATTERN = /^[1-9]\d*\/[1-9]\d*$/;
@@ -117,4 +119,5 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   PARTNER_FAILURE_RATE: Joi.number().min(0).max(1).default(0.3),
   PARTNER_LATENCY_MS: Joi.number().integer().min(0).max(60_000).default(200),
   REPORT_TIMEZONE: Joi.string().default('Asia/Ho_Chi_Minh'),
+  WS_MAX_SUBSCRIPTIONS: Joi.number().integer().min(1).max(1000).default(50),
 });

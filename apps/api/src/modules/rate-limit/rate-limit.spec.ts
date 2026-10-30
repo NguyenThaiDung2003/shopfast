@@ -98,8 +98,9 @@ describe('AppThrottlerGuard', () => {
     return { guard, storage };
   }
 
-  function context(req: Record<string, unknown>): ExecutionContext {
+  function context(req: Record<string, unknown>, type = 'http'): ExecutionContext {
     return {
+      getType: () => type,
       getHandler: () => () => undefined,
       getClass: () => class {},
       switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({}) }),
@@ -145,6 +146,14 @@ describe('AppThrottlerGuard', () => {
     await guard.onModuleInit();
 
     await expect(guard.canActivate(context({ ip: '10.0.0.1', headers: {} }))).resolves.toBe(true);
+    expect(storage.increment).not.toHaveBeenCalled();
+  });
+
+  it('không đếm message WebSocket (context ws)', async () => {
+    const { guard, storage } = setup();
+    await guard.onModuleInit();
+
+    await expect(guard.canActivate(context({ headers: {} }, 'ws'))).resolves.toBe(true);
     expect(storage.increment).not.toHaveBeenCalled();
   });
 });

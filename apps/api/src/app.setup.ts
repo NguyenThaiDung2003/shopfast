@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import { AppException } from './common/exceptions/app.exception';
 import type { EnvironmentVariables } from './config/env.validation';
 import { setupBullBoard } from './modules/jobs/bull-board';
+import { RedisIoAdapter } from './modules/realtime/redis-io.adapter';
 
 export function validationExceptionFactory(errors: ValidationError[]): AppException {
   const fields = errors.map((e) => e.property).join(', ');
@@ -34,6 +35,8 @@ export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix('api');
   // Ngoài prefix /api, tự kiểm quyền ADMIN (ADR-0009).
   setupBullBoard(app);
+  // Socket.IO tại /socket.io (ngoài /api), đồng bộ room giữa các instance qua Redis (ADR-0010).
+  app.useWebSocketAdapter(new RedisIoAdapter(app));
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
