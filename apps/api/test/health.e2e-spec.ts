@@ -47,7 +47,11 @@ describe('Health (e2e)', () => {
 
     it('GET /health/live: 200, chỉ tiến trình', async () => {
       const res = await request(app.getHttpServer()).get('/health/live').expect(200);
-      expect(res.body).toEqual({ status: 'ok', uptimeSeconds: expect.any(Number) });
+      expect(res.body).toEqual({
+        status: 'ok',
+        uptimeSeconds: expect.any(Number),
+        commit: expect.any(String),
+      });
     });
 
     it('đường dẫn cũ /api/health → 308 sang /health', async () => {

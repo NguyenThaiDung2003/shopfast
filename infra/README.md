@@ -4,12 +4,17 @@ Hạ tầng triển khai của ShopFast.
 
 Môi trường **dev** dùng `docker-compose.yml` ở gốc repo (api + postgres:16 + redis:7) – xem [README → Chạy cục bộ](../README.md#chạy-cục-bộ) và [ADR-0002](../docs/adr/0002-mo-hinh-du-lieu-va-moi-truong-dev.md).
 
-**Production** chạy trên một EC2, không cần dịch vụ AWS nào khác: [docker-compose.prod.yml](docker-compose.prod.yml), lý do thiết kế ở [ADR-0013](../docs/adr/0013-trien-khai-production-blue-green.md).
+**Production** chạy trên một EC2, chỉ thêm IAM và một S3 bucket backup: [docker-compose.prod.yml](docker-compose.prod.yml), lý do thiết kế ở [ADR-0013](../docs/adr/0013-trien-khai-production-blue-green.md).
 
 | Đường dẫn                                                                      | Vai trò                                                                                                                                         |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | [scripts/init-env.sh](scripts/init-env.sh)                                     | Tạo `infra/.env` với secret ngẫu nhiên                                                                                                          |
-| [scripts/deploy.sh](scripts/deploy.sh)                                         | Deploy blue-green, dùng cho cả lần đầu                                                                                                          |
+| [scripts/deploy.sh](scripts/deploy.sh)                                         | Deploy blue-green: `<sha>` dùng image có sẵn, không đối số thì build tại chỗ                                                                    |
+| [scripts/rollback.sh](scripts/rollback.sh)                                     | Quay về bản đã deploy, dưới 2 phút                                                                                                              |
+| [scripts/pull-deploy.sh](scripts/pull-deploy.sh)                               | Cron mỗi phút: tag `production` đổi thì kéo image rồi deploy                                                                                    |
+| [scripts/backup.sh](scripts/backup.sh), [restore.sh](scripts/restore.sh)       | Backup lên S3; khôi phục vào DB mới để kiểm tra                                                                                                 |
+| [scripts/bootstrap-server.sh](scripts/bootstrap-server.sh)                     | Chuẩn bị server cho CD và backup                                                                                                                |
+| [aws/](aws/README.md)                                                          | Hướng dẫn thiết lập IAM, S3, Security Group                                                                                                     |
 | [scripts/switch-upstream.sh](scripts/switch-upstream.sh)                       | Đổi màu thủ công                                                                                                                                |
 | [scripts/init-letsencrypt.sh](scripts/init-letsencrypt.sh)                     | Cấp chứng chỉ, `deploy.sh` tự gọi                                                                                                               |
 | [nginx/templates/default.conf.template](nginx/templates/default.conf.template) | HTTP → HTTPS, TLS, web tĩnh                                                                                                                     |
@@ -56,13 +61,17 @@ HTTPS chỉ hợp lệ với `DOMAIN`. Let's Encrypt không cấp cert cho tên 
 
 ## Cập nhật bản mới
 
+Sau khi xong [aws/README.md](aws/README.md): merge vào `main`, workflow **Deploy** chạy CI, đẩy image lên GHCR, dời tag `production`. Cron trên EC2 thấy tag đổi thì kéo image rồi gọi `deploy.sh <sha>`. Server ở trạng thái detached HEAD theo commit đã deploy.
+
+Không có GitHub thì deploy tay:
+
 ```bash
-cd ~/shopfast && git pull && ./infra/scripts/deploy.sh
+cd ~/shopfast && git checkout main && git pull && ./infra/scripts/deploy.sh
 ```
 
-Script build, migrate, bật màu còn lại, chờ healthy, đổi traffic rồi dừng màu cũ. Màu mới không healthy sau 2 phút thì dừng lại, traffic giữ nguyên ở màu cũ. Migration phải tương thích ngược với bản đang chạy.
+`deploy.sh` backup nếu có migration mới, migrate, bật màu còn lại, chờ healthy, đổi traffic, kiểm tra qua Nginx, drain 30 giây rồi dừng màu cũ. Lỗi trước khi đổi thì traffic giữ nguyên; lỗi sau khi đổi thì tự rollback. Migration phải tương thích ngược ([ADR-0015](../docs/adr/0015-zero-downtime-va-gioi-han.md)).
 
-Rollback: `git checkout <commit cũ>` rồi chạy lại `deploy.sh`.
+Rollback tay: `./infra/scripts/rollback.sh` về bản tốt liền trước, hoặc `./infra/scripts/rollback.sh <sha>`. Máy giữ 5 bản gần nhất; xem `infra/.deploy/deploy_history`.
 
 ## Vận hành
 
@@ -71,6 +80,10 @@ Các lệnh dưới chạy trong `~/shopfast/infra`:
 ```bash
 alias dc='docker compose -f docker-compose.prod.yml'
 dc ps -a
+cat .deploy/last_good_sha
+tail -n 50 .deploy/deploy.log
+tail -n 20 /var/log/shopfast/deploy-pull.log
+tail -n 20 /var/log/shopfast/backup.log
 dc logs --tail 50 api-blue
 dc logs nginx
 ```
@@ -79,4 +92,4 @@ dc logs nginx
 - **Sửa cấu hình Nginx:** `dc restart nginx` (template chỉ được render khi khởi động).
 - Xử lý sự cố: [ADR-0013](../docs/adr/0013-trien-khai-production-blue-green.md#xử-lý-khi-sự-cố).
 
-Phần sẽ bổ sung: script sao lưu DB.
+- **Backup:** cron 02:00 giờ Việt Nam, diễn tập theo [docs/restore-drill.md](../docs/restore-drill.md).

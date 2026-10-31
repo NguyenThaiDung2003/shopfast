@@ -12,3 +12,5 @@ coverage/
 storage/
 # Màu đang chạy của blue-green, do infra/scripts/switch-upstream.sh sinh trên server
 infra/nginx/upstream/active.conf
+# Trạng thái deploy trên server: last_good_sha, deploy_history, log
+infra/.deploy/

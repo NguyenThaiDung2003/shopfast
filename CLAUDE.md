@@ -114,9 +114,12 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Worker BullMQ mới phải thêm vào `processors` của `WorkersBootstrapService` để được đóng sau drain (chờ job đang chạy). Việc chạy lâu hơn `SHUTDOWN_TIMEOUT_MS` phải chia nhỏ hoặc idempotent để chạy lại.
 - Dockerfile phải `exec` tiến trình node (SIGTERM tới được Node); compose giữ `init: true` và `stop_grace_period` lớn hơn `SHUTDOWN_TIMEOUT_MS`.
 
-## Triển khai production (ADR-0013)
+## Triển khai production (ADR-0013 → 0016)
 
-- Chỉ dùng một EC2, không phụ thuộc dịch vụ AWS khác. Deploy bằng `infra/scripts/deploy.sh` (build trên máy, migrate, bật màu còn lại, chờ healthy, đổi upstream, dừng màu cũ).
+- Máy chủ chỉ có một EC2; ngoài ra chỉ dùng IAM và một S3 bucket backup, không thêm ECR/SSM. Thiết lập AWS: `infra/aws/README.md`.
+- Push `main` chạy `.github/workflows/deploy.yml`: CI → build trên runner, đẩy GHCR tag full SHA → dời tag git `production` → chờ `/health/live` đúng SHA. Cron trên EC2 (`pull-deploy.sh`, cài vào `/usr/local/bin`, đổi file phải chạy lại `bootstrap-server.sh`) kéo image rồi gọi `deploy.sh <sha>`. Không có AWS key hay SSH key ở GitHub; không dùng OIDC vì Identity providers bị khoá theo gói tài khoản.
+- `deploy.sh`: backup nếu có migration mới, migrate, bật màu còn lại, chờ healthy, đổi upstream, kiểm tra qua Nginx (`/health/live` đúng commit), drain, dừng màu cũ, ghi `infra/.deploy/last_good_sha`. Sau khi đổi mà lỗi thì tự gọi `rollback.sh` (dùng image có sẵn, không migrate).
+- Backup: `backup.sh`, cron hằng ngày; `restore.sh` chỉ khôi phục vào DB mới `shopfast_restore_*`. Diễn tập: `docs/restore-drill.md`.
 - `apps/api/Dockerfile`: stage cuối `production` là mặc định, dev dùng `target: dev`. Image không chứa secret, không tự migrate (service `migrate`).
 - Secret nằm ở `infra/.env` trên server (`chmod 600`, gitignore, sinh bằng `infra/scripts/init-env.sh`), **không bao giờ commit**; mẫu ở `infra/.env.example`.
 - Mạng `backend` là `internal: true`; chỉ nginx có `ports`.
@@ -156,7 +159,7 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Mục tiêu coverage tầng service **≥ 60%**, chỉ đo `*.service.ts` (ngưỡng cấu hình trong `apps/api/package.json` → `jest.coverageThreshold`; `test:cov` thất bại nếu không đạt).
 - Endpoint quan trọng có e2e test trong `apps/api/test/*.e2e-spec.ts`, tạo app bằng `createTestApp()` (`test/create-test-app.ts`).
 - E2E chạy với Postgres + Redis thật (`TEST_DATABASE_URL`, `TEST_REDIS_URL` trong `.env`, DB tên `*_test`) – cần `docker compose up -d postgres redis`. Global setup áp migration rồi TRUNCATE DB test; unit test không cần DB.
-- CI (`.github/workflows/ci.yml`) chạy trên PR vào `main`, không dùng secret: job `Lint`, `Unit test` (coverage API thành artifact), `E2E test`, `Docker build`. Branch protection tham chiếu theo tên job: đổi tên phải sửa cả ở đó.
+- CI (`.github/workflows/ci.yml`) chạy trên PR vào `main` và trước mỗi deploy, không dùng secret: job `Lint`, `Unit test` (coverage API thành artifact), `E2E test`, `Docker build`. Branch protection tham chiếu theo tên job: đổi tên phải sửa cả ở đó.
 
 ## Lệnh chuẩn (chạy ở gốc repo)
 
