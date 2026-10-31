@@ -1,17 +1,19 @@
-# CI cho pull request vào main. Tên job được branch protection tham chiếu: đổi tên phải sửa cả ở đó.
+# CI cho pull request vào main; deploy.yml cũng gọi trước khi deploy. Tên job được branch protection
+# tham chiếu: đổi tên phải sửa cả ở đó.
 # Không dùng secret: DB/Redis chỉ sống trong job, JWT_SECRET sinh ngẫu nhiên lúc chạy.
 name: CI
 
 on:
+  workflow_call:
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
 
-# Push mới vào PR thì huỷ lần chạy cũ.
+# Push mới vào PR thì huỷ lần chạy cũ. deploy.yml gọi lại workflow này cho từng commit của main.
 concurrency:
-  group: ci-${{ github.event.pull_request.number }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:

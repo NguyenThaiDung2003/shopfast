@@ -16,6 +16,8 @@ export class LivenessDto {
   status!: 'ok';
   /** Số giây process đã chạy. */
   uptimeSeconds!: number;
+  /** Commit của bản build (GIT_COMMIT); deploy.sh dùng để biết traffic đã tới đúng bản mới. */
+  commit!: string;
 }
 
 export class DependencyCheckDto {

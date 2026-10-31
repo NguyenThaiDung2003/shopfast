@@ -23,7 +23,9 @@ function setup({ db = true, redis = true, shuttingDown = false } = {}) {
     ),
   };
   const shutdown = { isShuttingDown: shuttingDown };
-  const config = { get: () => 800 } as unknown as ConfigService<EnvironmentVariables, true>;
+  const config = {
+    get: (key: string) => (key === 'GIT_COMMIT' ? 'abc1234' : 800),
+  } as unknown as ConfigService<EnvironmentVariables, true>;
   const service = new HealthService(
     prismaIndicator as unknown as PrismaHealthIndicator,
     prisma,
@@ -88,7 +90,11 @@ describe('HealthService.ready', () => {
 describe('HealthService.live', () => {
   it('không chạm DB/Redis, kể cả khi đang tắt', () => {
     const { service, prismaIndicator, redisIndicator } = setup({ db: false, shuttingDown: true });
-    expect(service.live()).toMatchObject({ status: 'ok', uptimeSeconds: expect.any(Number) });
+    expect(service.live()).toEqual({
+      status: 'ok',
+      uptimeSeconds: expect.any(Number),
+      commit: 'abc1234',
+    });
     expect(prismaIndicator.pingCheck).not.toHaveBeenCalled();
     expect(redisIndicator.pingCheck).not.toHaveBeenCalled();
   });

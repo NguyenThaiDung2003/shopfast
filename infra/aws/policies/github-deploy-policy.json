@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EditThisSecurityGroup",
+      "Effect": "Allow",
+      "Action": ["ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupIngress"],
+      "Resource": "arn:aws:ec2:<REGION>:<ACCOUNT_ID>:security-group/<SG_ID>"
+    },
+    {
+      "Sid": "DescribeHasNoResourceLevelPermission",
+      "Effect": "Allow",
+      "Action": "ec2:DescribeSecurityGroupRules",
+      "Resource": "*"
+    }
+  ]
+}

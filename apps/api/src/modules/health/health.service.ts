@@ -50,7 +50,7 @@ export class HealthService {
 
   /** Tiến trình còn sống: không chạm phụ thuộc nào, kể cả khi đang tắt. */
   live(): LivenessDto {
-    return { status: 'ok', uptimeSeconds: uptimeSeconds() };
+    return { status: 'ok', uptimeSeconds: uptimeSeconds(), commit: this.versionInfo.commit };
   }
 
   async ready(): Promise<ReadinessDto> {
