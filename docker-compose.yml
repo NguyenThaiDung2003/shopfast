@@ -6,7 +6,7 @@
 # - Hai cổng 5432/6379 được publish CHỈ ĐỂ PHỤC VỤ DEV (chạy api bằng `pnpm start:dev`,
 #   Prisma Studio, seed, psql từ máy host) và chỉ bind vào 127.0.0.1 nên không lộ ra mạng LAN.
 # - Môi trường staging/production KHÔNG publish cổng DB/Redis (SRS: không phơi ra Internet);
-#   chỉ Nginx mở 80/443.
+#   chỉ Nginx mở 80/443 (infra/docker-compose.prod.yml, ADR-0013).
 name: shopfast
 
 services:
@@ -63,6 +63,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: dev
     image: shopfast-api:dev
     restart: unless-stopped
     # Tắt êm (ADR-0012): tini (PID 1) chuyển SIGTERM cho node; Docker chờ lâu hơn

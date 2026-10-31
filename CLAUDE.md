@@ -114,6 +114,14 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Worker BullMQ mới phải thêm vào `processors` của `WorkersBootstrapService` để được đóng sau drain (chờ job đang chạy). Việc chạy lâu hơn `SHUTDOWN_TIMEOUT_MS` phải chia nhỏ hoặc idempotent để chạy lại.
 - Dockerfile phải `exec` tiến trình node (SIGTERM tới được Node); compose giữ `init: true` và `stop_grace_period` lớn hơn `SHUTDOWN_TIMEOUT_MS`.
 
+## Triển khai production (ADR-0013)
+
+- `apps/api/Dockerfile`: stage cuối `production` là mặc định, dev dùng `target: dev`. Image không chứa secret, không tự migrate (service `migrate` chạy trước khi bật màu mới).
+- Secret lấy từ SSM (`/shopfast/prod/<service>/<TÊN_BIẾN>`), không có `.env` trên server: API qua `infra/secrets/ssm-entrypoint.sh`, Postgres/Redis qua sidecar `secrets-agent` + tmpfs. Biến mới có secret = thêm tham số SSM, không ghi vào compose.
+- `docker exec` và healthcheck **không** có biến do entrypoint nạp: healthcheck không được cần secret; lệnh cần secret dùng `docker compose run --rm migrate …`.
+- Mạng `backend` là `internal: true`; chỉ nginx có `ports`. Service mới cần gọi ra ngoài phải ở `edge`/`egress`.
+- Đổi màu bằng `infra/scripts/switch-upstream.sh`, không sửa tay `active.conf`. Migration phải tương thích ngược vì hai màu chạy song song.
+
 ## Frontend (apps/web)
 
 - Design system "Modern Vietnamese Retail Flow" (`apps/web/design/DESIGN.md`, bản export Google Stitch – chỉ tham chiếu, không import). Token màu/font/bo góc/shadow nằm **duy nhất** ở `apps/web/tailwind.config.js`; component chỉ dùng tên token (`bg-primary-container`, `text-on-surface-variant`, `shadow-card`…), **không** mã hex hay màu mặc định Tailwind (`slate-*`, `red-*`…). Bo góc theo DESIGN.md (config Stitch đặt sai `full`).

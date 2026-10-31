@@ -122,6 +122,9 @@ importers:
       pdfkit:
         specifier: ^0.20.2
         version: 0.20.2
+      prisma:
+        specifier: ^6.1.0
+        version: 6.19.3(typescript@5.7.3)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -180,9 +183,6 @@ importers:
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@20.19.43)
-      prisma:
-        specifier: ^6.1.0
-        version: 6.19.3(typescript@5.7.3)
       socket.io-client:
         specifier: ^4.8.4
         version: 4.8.4

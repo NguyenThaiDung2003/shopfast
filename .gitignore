@@ -10,3 +10,5 @@ coverage/
 !.vscode/extensions.json
 # Hoá đơn PDF sinh ra khi chạy api trên host (INVOICE_STORAGE_DIR mặc định)
 storage/
+# Màu đang chạy của blue-green, do infra/scripts/switch-upstream.sh sinh trên server
+infra/nginx/upstream/active.conf

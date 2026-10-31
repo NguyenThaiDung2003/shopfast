@@ -9,7 +9,7 @@ infra/     Hạ tầng triển khai
 docs/adr/  Architecture Decision Records
 ```
 
-Quy ước phát triển: xem [CLAUDE.md](CLAUDE.md). Các quyết định kỹ thuật: [docs/adr/](docs/adr/).
+Quy ước phát triển: xem [CLAUDE.md](CLAUDE.md). Các quyết định kỹ thuật: [docs/adr/](docs/adr/). Triển khai production: [infra/README.md](infra/README.md).
 
 ## Chạy cục bộ
 
