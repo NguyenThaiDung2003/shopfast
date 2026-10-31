@@ -53,7 +53,7 @@ Dịch vụ dừng; đây là giới hạn đã chấp nhận: một EC2 là đi
 
 ### 9. Backup có chắc khôi phục được không?
 
-`backup.sh` kiểm file bằng `pg_restore --list` trước khi upload. `restore.sh` khôi phục thật vào DB mới và đối chiếu số dòng. Trích kết quả từ biên bản đã điền trong `docs/restore-drill.md`, nói đúng số đo thật.
+`backup.sh` kiểm file bằng `pg_restore --list` trước khi upload. `restore.sh` khôi phục thật vào DB mới và đối chiếu số dòng. Lần diễn tập ngày 2026-10-31 dùng bản thật trên S3: 11 giây, 7 bảng khớp số dòng. Nói rõ giới hạn: dữ liệu demo 68 KB, khôi phục trên cùng máy, chưa diễn tập dựng máy mới.
 
 ### 10. Tài khoản GitHub bị chiếm thì sao?
 

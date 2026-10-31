@@ -130,11 +130,11 @@ git branch -d demo/pipeline
 
 ## Trạng thái kiểm thử của kịch bản
 
-| Mục           | Trạng thái                                                                                     |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| 1. Pipeline   | Chưa chạy, cần xong `infra/aws/README.md`. `deploy.sh`, `rollback.sh` đã chạy thật trên server |
-| 2. Realtime   | Có e2e `realtime.e2e-spec.ts`; chưa thử thao tác trên hai trình duyệt ở production             |
-| 3. 429        | Đã chạy trên production                                                                        |
-| 4. Agent      | Chưa chạy, cần LLM key                                                                         |
-| 5. Bull Board | Có test; chưa mở trên production                                                               |
-| 6. Tắt Redis  | Đã chạy trên production: `degraded` 200, sản phẩm 200, Redis bật lại thì `ok`                  |
+| Mục           | Trạng thái                                                                         |
+| ------------- | ---------------------------------------------------------------------------------- |
+| 1. Pipeline   | Đã chạy thật qua PR #2: 5 phút 47 giây, production đúng SHA                        |
+| 2. Realtime   | Có e2e `realtime.e2e-spec.ts`; chưa thử thao tác trên hai trình duyệt ở production |
+| 3. 429        | Đã chạy trên production                                                            |
+| 4. Agent      | Chưa chạy, cần LLM key                                                             |
+| 5. Bull Board | Có test; chưa mở trên production                                                   |
+| 6. Tắt Redis  | Đã chạy trên production: `degraded` 200, sản phẩm 200, Redis bật lại thì `ok`      |

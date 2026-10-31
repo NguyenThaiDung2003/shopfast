@@ -18,12 +18,12 @@ Tổng 11 slide. Phần demo chiếm nhiều thời gian nhất vì rubric ưu t
 
 ## Số liệu cần điền từ lần chạy thật
 
-Không dùng ước lượng trên slide. Lấy từ tab Actions, log rollback và `docs/restore-drill.md`.
+Chỉ dùng số đo thật. Chạy lại trước buổi bảo vệ nếu hệ thống thay đổi.
 
-- Thời gian pipeline từ push tới deploy xong.
-- Thời gian `rollback.sh`.
-- Số unit test, e2e test và coverage tầng service.
-- Thời gian diễn tập khôi phục.
+- Thời gian pipeline từ merge tới deploy xong: 5 phút 47 giây (lần chạy `41220230717`).
+- Thời gian `rollback.sh`: 12–24 giây.
+- Unit test: API 405, web 30 file; e2e và coverage tầng service: lấy từ lần CI mới nhất.
+- Thời gian diễn tập khôi phục: 11 giây, dữ liệu demo 68 KB (`docs/restore-drill.md`).
 - Số liệu cache trong `docs/perf/cache-benchmark.md`.
 
 ## Mẹo trình bày
