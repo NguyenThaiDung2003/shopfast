@@ -1,9 +1,9 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job, UnrecoverableError } from 'bullmq';
+import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { TicketClassifierService } from '../support/ticket-classifier.service';
 import { DeadLetterService } from './dead-letter.service';
-import { EmailJobResult, EmailJobsService } from './email-jobs.service';
+import { EmailClaimBusyError, EmailJobResult, EmailJobsService } from './email-jobs.service';
 import { InventorySyncService } from './inventory-sync.service';
 import { InvoiceJobResult, InvoiceService } from './invoice.service';
 import {
@@ -62,7 +62,18 @@ export class EmailProcessor extends ReportingWorkerHost {
     super(EMAIL_QUEUE, deadLetters);
   }
 
-  process(job: Job): Promise<EmailJobResult> {
+  async process(job: Job, token?: string): Promise<EmailJobResult> {
+    try {
+      return await this.route(job);
+    } catch (error) {
+      if (!(error instanceof EmailClaimBusyError)) throw error;
+      // Hoãn tới lúc claim hết hạn; không tính vào số lần thử nên không rơi vào dead-letter.
+      await job.moveToDelayed(Date.now() + error.retryAfterMs, token);
+      throw new DelayedError();
+    }
+  }
+
+  private route(job: Job): Promise<EmailJobResult> {
     switch (job.name) {
       case EmailJob.ORDER_CONFIRMATION:
         return this.emailJobs.sendOrderConfirmation((job.data as OrderJobData).orderId);

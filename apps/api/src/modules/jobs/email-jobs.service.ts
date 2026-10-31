@@ -18,6 +18,14 @@ import { dayRange, reportDate } from './report-period';
 export type EmailJobResult =
   { status: 'sent'; sent: number } | { status: 'skipped'; reason: string };
 
+/** Claim đang thuộc lần chạy khác: job phải chờ, không được coi là đã gửi (ADR-0009). */
+export class EmailClaimBusyError extends Error {
+  constructor(readonly retryAfterMs: number) {
+    super(`Email claim busy, retry in ${retryAfterMs}ms`);
+    this.name = 'EmailClaimBusyError';
+  }
+}
+
 /**
  * Gửi email của các job F05. Mỗi thư đi qua `deliverOnce`: giành quyền trong `email_deliveries`
  * trước khi gửi → chạy lại job (retry, chạy tay, job trùng) không gửi lần hai (ADR-0009).
@@ -75,6 +83,7 @@ export class EmailJobsService {
     if (admins.length === 0) return { status: 'skipped', reason: 'no_admin' };
 
     let sent = 0;
+    let busy: EmailClaimBusyError | undefined;
     const failures: string[] = [];
     // Gửi hết cho mọi admin rồi mới báo lỗi: lần thử lại chỉ gửi cho người còn thiếu.
     for (const admin of admins) {
@@ -87,12 +96,17 @@ export class EmailJobsService {
         );
         if (outcome === 'sent') sent++;
       } catch (error) {
-        failures.push(`${admin.email}: ${(error as Error).message}`);
+        if (error instanceof EmailClaimBusyError) {
+          if (!busy || error.retryAfterMs > busy.retryAfterMs) busy = error;
+        } else {
+          failures.push(`${admin.email}: ${(error as Error).message}`);
+        }
       }
     }
     if (failures.length > 0) {
       throw new Error(`Daily report ${day} failed for ${failures.join('; ')}`);
     }
+    if (busy) throw busy;
     return sent > 0 ? { status: 'sent', sent } : { status: 'skipped', reason: 'already_sent' };
   }
 
@@ -102,8 +116,10 @@ export class EmailJobsService {
     to: string,
     content: EmailContent,
   ): Promise<'sent' | 'already_sent'> {
-    const claimId = await this.deliveries.claim(kind, ref, to);
-    if (claimId === null) return 'already_sent';
+    const claim = await this.deliveries.claim(kind, ref, to);
+    if (claim.status === 'sent') return 'already_sent';
+    if (claim.status === 'busy') throw new EmailClaimBusyError(claim.retryAfterMs);
+    const claimId = claim.id;
 
     try {
       await this.mailSender.send({
@@ -120,7 +136,7 @@ export class EmailJobsService {
         );
       throw error;
     }
-    // Lỗi ở đây (thư đã đi): claim giữ SENDING, lần thử lại sẽ thấy và bỏ qua.
+    // Lỗi ở đây (thư đã đi): claim giữ SENDING, hết hạn thì gửi lại; chấp nhận trùng hơn mất thư.
     await this.deliveries.markSent(claimId);
     return 'sent';
   }
