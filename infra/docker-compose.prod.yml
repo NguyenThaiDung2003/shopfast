@@ -103,6 +103,25 @@ services:
     command: ['npx', 'prisma', 'migrate', 'deploy']
     networks: [backend]
 
+  # Dữ liệu demo, chỉ chạy qua scripts/seed-demo.sh (từ chối khi DB đã có dữ liệu).
+  seed:
+    <<: *logging
+    image: shopfast-api:seed
+    profiles: [tools]
+    env_file: .env
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *api-env
+      # seed.ts chặn production; lớp bảo vệ thật là kiểm tra DB trống trong seed-demo.sh.
+      NODE_ENV: development
+    command: ['npx', 'prisma', 'db', 'seed']
+    networks: [backend]
+
   postgres:
     <<: *logging
     image: postgres:16-alpine

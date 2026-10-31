@@ -13,6 +13,20 @@ gzip_min_length 1024;
 gzip_proxied any;
 gzip_types application/javascript application/json image/svg+xml text/css text/plain;
 
+# Tên khác trỏ về máy này (IP, tên *.amazonaws.com của EC2) về domain chính. Let's Encrypt không cấp
+# cert cho amazonaws.com nên https://ec2-... vẫn cảnh báo cert trước khi tới được đây.
+server {
+    listen 80 default_server;
+    return 301 https://${DOMAIN}$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    return 301 https://${DOMAIN}$request_uri;
+}
+
 server {
     listen 80;
     server_name ${DOMAIN};

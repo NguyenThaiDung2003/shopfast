@@ -46,7 +46,13 @@ Môi trường **dev** dùng `docker-compose.yml` ở gốc repo (api + postgres
 
 5. Lưu một bản `infra/.env` ở nơi an toàn. Mất file này là mất mật khẩu DB và `JWT_SECRET`.
 
-Muốn gửi email thật hoặc bật AI: thêm `SMTP_*`, `LLM_*` vào `infra/.env` (mẫu ở `.env.example`) rồi deploy lại.
+Muốn bật AI: thêm `LLM_*` vào `infra/.env` (mẫu ở `.env.example`) rồi deploy lại.
+
+Dữ liệu demo: `./infra/scripts/seed-demo.sh` (chỉ chạy khi DB còn trống). Mật khẩu tài khoản mẫu nằm ở `SEED_USER_PASSWORD` trong `infra/.env`.
+
+Email bằng Gmail: bật xác minh 2 bước, tạo [App Password](https://myaccount.google.com/apppasswords), rồi chạy `./infra/scripts/set-smtp-gmail.sh && ./infra/scripts/deploy.sh`. Gmail giới hạn khoảng 500 email/ngày, chỉ phù hợp demo.
+
+HTTPS chỉ hợp lệ với `DOMAIN`. Let's Encrypt không cấp cert cho tên `*.amazonaws.com`, nên tên đó chỉ dùng được qua HTTP và tự chuyển về `DOMAIN`.
 
 ## Cập nhật bản mới
 
@@ -71,7 +77,6 @@ dc logs nginx
 
 - **Gia hạn cert:** tự động mỗi 12 giờ, Nginx reload trong vòng 5 phút sau khi có cert mới.
 - **Sửa cấu hình Nginx:** `dc restart nginx` (template chỉ được render khi khởi động).
-- **Dữ liệu:** image production không có seed nên DB ban đầu trống.
 - Xử lý sự cố: [ADR-0013](../docs/adr/0013-trien-khai-production-blue-green.md#xử-lý-khi-sự-cố).
 
 Phần sẽ bổ sung: script sao lưu DB.
