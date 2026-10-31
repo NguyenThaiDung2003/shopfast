@@ -21,5 +21,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     // Test không bao giờ gọi API thật: fetch bị thay bằng fake (src/test/fake-api.ts).
     restoreMocks: true,
+    // Test trang đầy đủ (user-event trên jsdom) chậm hẳn khi CPU bị tranh chấp, nhất là runner CI.
+    testTimeout: 20_000,
   },
 });

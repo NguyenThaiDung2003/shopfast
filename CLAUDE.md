@@ -153,9 +153,10 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 ## Kiểm thử
 
 - Mỗi tính năng phải có **unit test cho service** (`*.service.spec.ts`, mock repository).
-- Mục tiêu coverage tầng service **≥ 60%** (ngưỡng cấu hình trong `apps/api/package.json` → `jest.coverageThreshold`; `test:cov` thất bại nếu không đạt).
+- Mục tiêu coverage tầng service **≥ 60%**, chỉ đo `*.service.ts` (ngưỡng cấu hình trong `apps/api/package.json` → `jest.coverageThreshold`; `test:cov` thất bại nếu không đạt).
 - Endpoint quan trọng có e2e test trong `apps/api/test/*.e2e-spec.ts`, tạo app bằng `createTestApp()` (`test/create-test-app.ts`).
 - E2E chạy với Postgres + Redis thật (`TEST_DATABASE_URL`, `TEST_REDIS_URL` trong `.env`, DB tên `*_test`) – cần `docker compose up -d postgres redis`. Global setup áp migration rồi TRUNCATE DB test; unit test không cần DB.
+- CI (`.github/workflows/ci.yml`) chạy trên PR vào `main`, không dùng secret: job `Lint`, `Unit test` (coverage API thành artifact), `E2E test`, `Docker build`. Branch protection tham chiếu theo tên job: đổi tên phải sửa cả ở đó.
 
 ## Lệnh chuẩn (chạy ở gốc repo)
 
