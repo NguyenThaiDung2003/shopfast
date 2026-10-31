@@ -25,7 +25,7 @@ Mục tiêu: pipeline dưới 10 phút, rollback dưới 2 phút, deploy lỗi k
 6. Drain 30 giây (`DRAIN_SECONDS`), dừng màu cũ (SIGTERM, tắt êm theo ADR-0012).
 7. Ghi `.deploy/last_good_sha` và `deploy_history`, giữ 5 image gần nhất.
 
-Hỏng ở bước 2–4: màu cũ không bị đụng tới, exit 1. Hỏng ở bước 5: tự gọi `rollback.sh`, exit 1. Workflow fail theo mã thoát của SSH.
+Hỏng ở bước 2–4: màu cũ không bị đụng tới, exit 1. Hỏng ở bước 5: tự gọi `rollback.sh`, exit 1. Workflow báo fail khi `/health/live` không báo đúng SHA sau 5 phút (ADR-0014).
 
 `rollback.sh [sha]`: màu cũ còn chạy đúng SHA thì chỉ đổi upstream; không thì bật lại từ image có sẵn. Không build, không migrate.
 

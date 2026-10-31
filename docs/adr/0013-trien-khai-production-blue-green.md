@@ -2,7 +2,7 @@
 
 - **Trạng thái:** Chấp nhận
 - **Ngày:** 2026-10-31
-- **Cập nhật:** build và CD thay bằng [ADR-0014](0014-oidc-va-cong-ssh-tam-thoi.md), trình tự deploy và rollback ở [ADR-0015](0015-zero-downtime-va-gioi-han.md). Phần blue-green, secret, HTTPS, mạng vẫn có hiệu lực.
+- **Cập nhật:** build và CD thay bằng [ADR-0014](0014-cd-ec2-tu-keo-ban-moi.md), trình tự deploy và rollback ở [ADR-0015](0015-zero-downtime-va-gioi-han.md). Phần blue-green, secret, HTTPS, mạng vẫn có hiệu lực.
 
 ## Bối cảnh
 

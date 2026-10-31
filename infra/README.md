@@ -11,10 +11,10 @@ Môi trường **dev** dùng `docker-compose.yml` ở gốc repo (api + postgres
 | [scripts/init-env.sh](scripts/init-env.sh)                                     | Tạo `infra/.env` với secret ngẫu nhiên                                                                                                          |
 | [scripts/deploy.sh](scripts/deploy.sh)                                         | Deploy blue-green: `<sha>` dùng image có sẵn, không đối số thì build tại chỗ                                                                    |
 | [scripts/rollback.sh](scripts/rollback.sh)                                     | Quay về bản đã deploy, dưới 2 phút                                                                                                              |
-| [scripts/ci-entry.sh](scripts/ci-entry.sh), [ci-sg.sh](scripts/ci-sg.sh)       | Lệnh của SSH key deploy; mở/đóng cổng 22 cho runner                                                                                             |
+| [scripts/pull-deploy.sh](scripts/pull-deploy.sh)                               | Cron mỗi phút: tag `production` đổi thì kéo image rồi deploy                                                                                    |
 | [scripts/backup.sh](scripts/backup.sh), [restore.sh](scripts/restore.sh)       | Backup lên S3; khôi phục vào DB mới để kiểm tra                                                                                                 |
 | [scripts/bootstrap-server.sh](scripts/bootstrap-server.sh)                     | Chuẩn bị server cho CD và backup                                                                                                                |
-| [aws/](aws/README.md)                                                          | Hướng dẫn thiết lập IAM, OIDC, S3, Security Group                                                                                               |
+| [aws/](aws/README.md)                                                          | Hướng dẫn thiết lập IAM, S3, Security Group                                                                                                     |
 | [scripts/switch-upstream.sh](scripts/switch-upstream.sh)                       | Đổi màu thủ công                                                                                                                                |
 | [scripts/init-letsencrypt.sh](scripts/init-letsencrypt.sh)                     | Cấp chứng chỉ, `deploy.sh` tự gọi                                                                                                               |
 | [nginx/templates/default.conf.template](nginx/templates/default.conf.template) | HTTP → HTTPS, TLS, web tĩnh                                                                                                                     |
@@ -61,7 +61,7 @@ HTTPS chỉ hợp lệ với `DOMAIN`. Let's Encrypt không cấp cert cho tên 
 
 ## Cập nhật bản mới
 
-Sau khi xong [aws/README.md](aws/README.md): merge vào `main`, workflow **Deploy** tự chạy CI, build, chuyển image rồi gọi `deploy.sh <sha>`. Server ở trạng thái detached HEAD theo commit đã deploy.
+Sau khi xong [aws/README.md](aws/README.md): merge vào `main`, workflow **Deploy** chạy CI, đẩy image lên GHCR, dời tag `production`. Cron trên EC2 thấy tag đổi thì kéo image rồi gọi `deploy.sh <sha>`. Server ở trạng thái detached HEAD theo commit đã deploy.
 
 Không có GitHub thì deploy tay:
 
@@ -82,6 +82,7 @@ alias dc='docker compose -f docker-compose.prod.yml'
 dc ps -a
 cat .deploy/last_good_sha
 tail -n 50 .deploy/deploy.log
+tail -n 20 /var/log/shopfast/deploy-pull.log
 tail -n 20 /var/log/shopfast/backup.log
 dc logs --tail 50 api-blue
 dc logs nginx

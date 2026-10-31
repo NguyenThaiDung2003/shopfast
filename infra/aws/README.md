@@ -1,16 +1,15 @@
 # Thiết lập AWS cho CD và backup
 
-Làm trên AWS Console, khoảng 25 phút. Sau bước này: push vào `main` tự deploy, DB được backup lên S3 mỗi ngày. Lý do thiết kế ở [ADR-0014](../../docs/adr/0014-oidc-va-cong-ssh-tam-thoi.md) và [ADR-0016](../../docs/adr/0016-backup-postgres-len-s3.md).
+Làm trên AWS Console, khoảng 15 phút. Sau bước này: push vào `main` tự deploy, DB được backup lên S3 mỗi ngày. Lý do thiết kế ở [ADR-0014](../../docs/adr/0014-cd-ec2-tu-keo-ban-moi.md) và [ADR-0016](../../docs/adr/0016-backup-postgres-len-s3.md).
 
 Chỉ dùng EC2, IAM và một S3 bucket. Region `ap-southeast-2`. Không tạo access key ở bất kỳ bước nào.
 
-Chuẩn bị ba giá trị dùng xuyên suốt:
+Chuẩn bị hai giá trị dùng xuyên suốt:
 
-| Tên            | Lấy ở đâu                                                  |
-| -------------- | ---------------------------------------------------------- |
-| `<ACCOUNT_ID>` | 12 chữ số, bấm tên tài khoản ở góc trên bên phải Console   |
-| `<SG_ID>`      | EC2 → Instances → instance → tab Security, dạng `sg-0abc…` |
-| `<BUCKET>`     | Tự đặt: `shopfast-backup-<ACCOUNT_ID>`                     |
+| Tên            | Lấy ở đâu                                                |
+| -------------- | -------------------------------------------------------- |
+| `<ACCOUNT_ID>` | 12 chữ số, bấm tên tài khoản ở góc trên bên phải Console |
+| `<BUCKET>`     | Tự đặt: `shopfast-backup-<ACCOUNT_ID>`                   |
 
 ## 1. S3 bucket backup
 
@@ -30,42 +29,25 @@ Role này chỉ đọc/ghi prefix `postgres/` của bucket, không xoá được
 2. IAM → Roles → **Create role** → AWS service → **EC2**. Gắn policy `shopfast-backup`. Đặt tên `shopfast-ec2`.
 3. EC2 → chọn instance → **Actions → Security → Modify IAM role** → chọn `shopfast-ec2`.
 
-## 3. OIDC cho GitHub Actions
+## 3. Security Group và Elastic IP
 
-1. IAM → Identity providers → **Add provider** → OpenID Connect:
-   - Provider URL: `https://token.actions.githubusercontent.com`
-   - Audience: `sts.amazonaws.com`
-2. IAM → Policies → **Create policy** → dán [policies/github-deploy-policy.json](policies/github-deploy-policy.json), thay `<REGION>`, `<ACCOUNT_ID>`, `<SG_ID>`. Đặt tên `shopfast-github-deploy`.
-3. IAM → Roles → **Create role** → **Custom trust policy** → dán [policies/github-deploy-trust.json](policies/github-deploy-trust.json), thay `<ACCOUNT_ID>`. Gắn policy `shopfast-github-deploy`. Đặt tên `shopfast-github-deploy`. Ghi lại ARN của role.
+Inbound của Security Group (EC2 → instance → tab Security) phải đúng như sau, không có rule nào khác:
 
-Role chỉ tin workflow chạy trên nhánh `main` của repo này: fork và nhánh khác không lấy được quyền.
-
-## 4. Security Group và Elastic IP
-
-Inbound của `<SG_ID>` phải đúng như sau, không có rule nào khác:
-
-| Cổng | Nguồn            | Ghi chú                                                     |
-| ---- | ---------------- | ----------------------------------------------------------- |
-| 80   | `0.0.0.0/0`      |                                                             |
-| 443  | `0.0.0.0/0`      |                                                             |
-| 22   | IP của bạn `/32` | Không để Anywhere. Workflow tự thêm và gỡ rule `gha-deploy` |
+| Cổng | Nguồn            | Ghi chú           |
+| ---- | ---------------- | ----------------- |
+| 80   | `0.0.0.0/0`      |                   |
+| 443  | `0.0.0.0/0`      |                   |
+| 22   | IP của bạn `/32` | Không để Anywhere |
 
 Không mở 5432, 6379. Nếu EC2 chưa có Elastic IP: EC2 → Elastic IPs → Allocate → Associate vào instance. Không có Elastic IP thì stop/start máy sẽ đổi IP, làm hỏng `DOMAIN`.
 
-## 5. SSH key deploy và server
+## 4. Server
 
-Trên máy bạn, tạo key riêng (không dùng lại key EC2):
-
-```bash
-ssh-keygen -t ed25519 -f shopfast-deploy -N "" -C shopfast-deploy
-ssh-keyscan -t ed25519 <ELASTIC_IP>
-```
-
-Trên EC2:
+GitHub không kết nối vào EC2: cron trên máy tự kéo bản mới ([ADR-0014](../../docs/adr/0014-cd-ec2-tu-keo-ban-moi.md)).
 
 ```bash
 cd ~/shopfast
-./infra/scripts/bootstrap-server.sh "<nội dung shopfast-deploy.pub>"
+./infra/scripts/bootstrap-server.sh
 echo 'BACKUP_S3_BUCKET=<BUCKET>' >> infra/.env
 echo 'BACKUP_S3_REGION=ap-southeast-2' >> infra/.env
 ./infra/scripts/backup.sh
@@ -73,22 +55,11 @@ echo 'BACKUP_S3_REGION=ap-southeast-2' >> infra/.env
 
 `backup.sh` phải in dòng `Xong: s3://…`. Báo lỗi `Unable to locate credentials` nghĩa là chưa gắn role ở bước 2.
 
-## 6. Cấu hình trên GitHub
+## 5. Package GHCR
 
-Settings → Secrets and variables → Actions.
+Sau lần workflow **Deploy** đầu tiên, GitHub → Packages → lần lượt `shopfast-api`, `shopfast-web` → Package settings → **Change visibility → Public**. Trước đó server báo `denied` khi pull và tự thử lại mỗi phút; workflow lần đầu có thể fail vì hết 5 phút chờ, nhưng server vẫn tự deploy sau khi đổi xong.
 
-| Loại     | Tên               | Giá trị                                  |
-| -------- | ----------------- | ---------------------------------------- |
-| Secret   | `DEPLOY_SSH_KEY`  | Toàn bộ file `shopfast-deploy` (private) |
-| Variable | `AWS_ROLE_ARN`    | ARN role ở bước 3                        |
-| Variable | `AWS_REGION`      | `ap-southeast-2`                         |
-| Variable | `EC2_HOST`        | Elastic IP                               |
-| Variable | `EC2_SG_ID`       | `<SG_ID>`                                |
-| Variable | `EC2_KNOWN_HOSTS` | Dòng in ra từ `ssh-keyscan`              |
-
-Xong thì xoá file private key trên máy bạn: GitHub đã giữ bản duy nhất cần dùng. Mất key thì tạo key mới và chạy lại `bootstrap-server.sh`.
-
-## 7. Tài khoản IAM cho người
+## 6. Tài khoản IAM cho người
 
 Không dùng root hằng ngày, không tạo access key dài hạn.
 
@@ -102,9 +73,4 @@ Không dùng root hằng ngày, không tạo access key dài hạn.
 
 - `curl -m 5 <ELASTIC_IP>:5432` và `:6379` phải timeout.
 - Merge một PR nhỏ: tab Actions có workflow **Deploy** xanh; `curl https://<domain>/health/live` trả đúng `commit`.
-- Security Group không còn rule `gha-deploy`.
-
-## Thu hồi quyền khi nghi lộ
-
-- SSH key: xoá dòng `shopfast-deploy` trong `~/.ssh/authorized_keys` trên EC2, xoá Secret `DEPLOY_SSH_KEY`.
-- GitHub bị chiếm: xoá role `shopfast-github-deploy` ở IAM.
+- `tail /var/log/shopfast/deploy-pull.log` trên server có dòng `Kéo image`.

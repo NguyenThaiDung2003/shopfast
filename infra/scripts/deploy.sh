@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy blue-green (ADR-0015).
-#   ./infra/scripts/deploy.sh <sha>   dùng image đã nạp sẵn, CD gọi qua ci-entry.sh
+#   ./infra/scripts/deploy.sh <sha>   dùng image đã có trên máy, CD gọi qua pull-deploy.sh
 #   ./infra/scripts/deploy.sh         build tại chỗ từ HEAD: lần đầu, hoặc khi GitHub lỗi
 # Lỗi trước khi đổi traffic: màu cũ giữ nguyên. Lỗi sau khi đổi: tự rollback. Cả hai đều exit 1.
 set -euo pipefail

@@ -117,7 +117,7 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 ## Triển khai production (ADR-0013 → 0016)
 
 - Máy chủ chỉ có một EC2; ngoài ra chỉ dùng IAM và một S3 bucket backup, không thêm ECR/SSM. Thiết lập AWS: `infra/aws/README.md`.
-- Push `main` chạy `.github/workflows/deploy.yml`: CI → build trên runner, tag full SHA → OIDC mở cổng 22 tạm cho runner → `docker save | ssh` → `deploy.sh <sha>`. Không thêm AWS access key vào GitHub; SSH key deploy chỉ chạy được `ci-entry.sh` (đổi lệnh phải chạy lại `bootstrap-server.sh`).
+- Push `main` chạy `.github/workflows/deploy.yml`: CI → build trên runner, đẩy GHCR tag full SHA → dời tag git `production` → chờ `/health/live` đúng SHA. Cron trên EC2 (`pull-deploy.sh`, cài vào `/usr/local/bin`, đổi file phải chạy lại `bootstrap-server.sh`) kéo image rồi gọi `deploy.sh <sha>`. Không có AWS key hay SSH key ở GitHub; không dùng OIDC vì Identity providers bị khoá theo gói tài khoản.
 - `deploy.sh`: backup nếu có migration mới, migrate, bật màu còn lại, chờ healthy, đổi upstream, kiểm tra qua Nginx (`/health/live` đúng commit), drain, dừng màu cũ, ghi `infra/.deploy/last_good_sha`. Sau khi đổi mà lỗi thì tự gọi `rollback.sh` (dùng image có sẵn, không migrate).
 - Backup: `backup.sh`, cron hằng ngày; `restore.sh` chỉ khôi phục vào DB mới `shopfast_restore_*`. Diễn tập: `docs/restore-drill.md`.
 - `apps/api/Dockerfile`: stage cuối `production` là mặc định, dev dùng `target: dev`. Image không chứa secret, không tự migrate (service `migrate`).
