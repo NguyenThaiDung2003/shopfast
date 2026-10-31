@@ -116,10 +116,10 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 
 ## Triển khai production (ADR-0013)
 
-- `apps/api/Dockerfile`: stage cuối `production` là mặc định, dev dùng `target: dev`. Image không chứa secret, không tự migrate (service `migrate` chạy trước khi bật màu mới).
-- Secret lấy từ SSM (`/shopfast/prod/<service>/<TÊN_BIẾN>`), không có `.env` trên server: API qua `infra/secrets/ssm-entrypoint.sh`, Postgres/Redis qua sidecar `secrets-agent` + tmpfs. Biến mới có secret = thêm tham số SSM, không ghi vào compose.
-- `docker exec` và healthcheck **không** có biến do entrypoint nạp: healthcheck không được cần secret; lệnh cần secret dùng `docker compose run --rm migrate …`.
-- Mạng `backend` là `internal: true`; chỉ nginx có `ports`. Service mới cần gọi ra ngoài phải ở `edge`/`egress`.
+- Chỉ dùng một EC2, không phụ thuộc dịch vụ AWS khác. Deploy bằng `infra/scripts/deploy.sh` (build trên máy, migrate, bật màu còn lại, chờ healthy, đổi upstream, dừng màu cũ).
+- `apps/api/Dockerfile`: stage cuối `production` là mặc định, dev dùng `target: dev`. Image không chứa secret, không tự migrate (service `migrate`).
+- Secret nằm ở `infra/.env` trên server (`chmod 600`, gitignore, sinh bằng `infra/scripts/init-env.sh`), **không bao giờ commit**; mẫu ở `infra/.env.example`.
+- Mạng `backend` là `internal: true`; chỉ nginx có `ports`.
 - Đổi màu bằng `infra/scripts/switch-upstream.sh`, không sửa tay `active.conf`. Migration phải tương thích ngược vì hai màu chạy song song.
 
 ## Frontend (apps/web)

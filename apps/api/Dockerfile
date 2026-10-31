@@ -40,18 +40,16 @@ WORKDIR /prod
 RUN npx prisma generate
 
 FROM node:20-alpine AS production
-# aws-cli: entrypoint nạp secret từ SSM lúc khởi động (ADR-0013); image không chứa secret nào.
-RUN apk add --no-cache openssl aws-cli
+# Secret truyền vào lúc chạy qua biến môi trường (ADR-0013); image không chứa secret nào.
+RUN apk add --no-cache openssl
 ENV NODE_ENV=production PORT=3000
 WORKDIR /app
 COPY --from=prod-deps /prod ./
-COPY --chmod=755 infra/secrets/ssm-entrypoint.sh /usr/local/bin/ssm-entrypoint.sh
 RUN mkdir -p /data/invoices && chown node:node /data/invoices
 USER node
 EXPOSE 3000
 # Readiness (ADR-0012): DB lỗi hoặc đang tắt → 503 → unhealthy; Redis lỗi → 200 degraded.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=5 \
   CMD wget -qO /dev/null "http://127.0.0.1:${PORT}/health" || exit 1
-ENTRYPOINT ["/usr/local/bin/ssm-entrypoint.sh"]
 # Không tự migrate: hai màu blue-green không được đua nhau, service `migrate` chạy trước (ADR-0013).
 CMD ["node", "dist/main"]

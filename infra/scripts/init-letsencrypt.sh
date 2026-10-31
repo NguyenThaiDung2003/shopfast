@@ -1,13 +1,11 @@
 #!/bin/sh
 # Cấp chứng chỉ lần đầu: ./infra/scripts/init-letsencrypt.sh [--staging]
-# Cần DOMAIN, LETSENCRYPT_EMAIL và DNS của DOMAIN đã trỏ về EC2, cổng 80 mở.
+# Đọc DOMAIN, LETSENCRYPT_EMAIL từ infra/.env. DNS của DOMAIN phải trỏ về EC2, cổng 80 mở.
+# deploy.sh tự gọi script này ở lần đầu.
 #
 # Nginx không khởi động được khi thiếu file cert, mà Let's Encrypt lại cần Nginx phục vụ webroot:
 # tạo cert tự ký tạm, bật Nginx, xin cert thật rồi reload.
 set -eu
-
-: "${DOMAIN:?Cần đặt DOMAIN}"
-: "${LETSENCRYPT_EMAIL:?Cần đặt LETSENCRYPT_EMAIL}"
 
 staging=""
 if [ "${1:-}" = "--staging" ]; then
@@ -15,6 +13,11 @@ if [ "${1:-}" = "--staging" ]; then
 fi
 
 cd "$(dirname "$0")/.."
+DOMAIN=$(sed -n 's/^DOMAIN=//p' .env)
+LETSENCRYPT_EMAIL=$(sed -n 's/^LETSENCRYPT_EMAIL=//p' .env)
+: "${DOMAIN:?Thiếu DOMAIN trong infra/.env}"
+: "${LETSENCRYPT_EMAIL:?Thiếu LETSENCRYPT_EMAIL trong infra/.env}"
+
 compose="docker compose -f docker-compose.prod.yml"
 live="/etc/letsencrypt/live/$DOMAIN"
 

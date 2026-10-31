@@ -9,4 +9,3 @@
 apps/web
 docs
 infra
-!infra/secrets/ssm-entrypoint.sh

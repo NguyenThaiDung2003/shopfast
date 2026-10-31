@@ -1,16 +1,13 @@
 # Production trên một EC2 (ADR-0013): nginx + blue-green API + postgres + redis.
 #
-# Không có file .env và không có secret ở đây: API tự nạp từ SSM khi khởi động, Postgres/Redis nhận
-# qua `secrets-agent`. Compose chỉ cần biến không bí mật từ shell (user-data hoặc pipeline):
-#   DOMAIN, AWS_REGION, API_IMAGE, WEB_IMAGE, IMAGE_TAG
+# Secret và cấu hình nằm ở infra/.env (Compose tự đọc, tạo bằng scripts/init-env.sh).
+# Deploy bằng scripts/deploy.sh; IMAGE_TAG do script đặt theo commit.
 #
 # Mạng:
-#   edge     nginx <-> api, API có đường ra Internet (SMTP, LLM, SSM)
+#   edge     nginx <-> api, API có đường ra Internet (SMTP, LLM)
 #   backend  internal: api <-> postgres/redis, không có đường ra Internet
-#   egress   việc chỉ cần gọi ra ngoài (secrets-agent, certbot, migrate)
+#   egress   certbot gọi Let's Encrypt
 # Chỉ nginx có `ports`.
-#
-# Quy trình deploy và đổi màu: infra/README.md.
 name: shopfast-prod
 
 x-logging: &logging
@@ -21,14 +18,16 @@ x-logging: &logging
       max-file: '5'
 
 x-api-image: &api-image
-  image: ${API_IMAGE:?Cần đặt API_IMAGE}:${IMAGE_TAG:?Cần đặt IMAGE_TAG}
+  image: shopfast-api:${IMAGE_TAG:-latest}
+  env_file: .env
 
 x-api-env: &api-env
   NODE_ENV: production
-  APP_VERSION: ${IMAGE_TAG}
-  AWS_REGION: ${AWS_REGION:?Cần đặt AWS_REGION}
-  SSM_PARAMETER_PATH: /shopfast/prod/api
+  APP_VERSION: ${IMAGE_TAG:-latest}
+  GIT_COMMIT: ${IMAGE_TAG:-latest}
   PORT: 3000
+  DATABASE_URL: postgresql://shopfast:${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong infra/.env}@postgres:5432/shopfast?schema=public
+  REDIS_URL: redis://:${REDIS_PASSWORD:?Thiếu REDIS_PASSWORD trong infra/.env}@redis:6379
   # Đúng 1 proxy (Nginx) đứng trước API (ADR-0008). Thêm CDN/LB thì phải sửa.
   TRUST_PROXY: 1
   SWAGGER_ENABLED: 'false'
@@ -62,7 +61,7 @@ services:
       web:
         condition: service_completed_successfully
     environment:
-      DOMAIN: ${DOMAIN:?Cần đặt DOMAIN}
+      DOMAIN: ${DOMAIN:?Thiếu DOMAIN trong infra/.env}
     ports:
       - '80:80'
       - '443:443'
@@ -92,7 +91,7 @@ services:
     <<: *api
     profiles: [green]
 
-  # Chạy một lần trước khi bật màu mới: docker compose run --rm migrate
+  # Chạy một lần trước khi bật màu mới, deploy.sh tự gọi.
   migrate:
     <<: [*logging, *api-image]
     profiles: [tools]
@@ -102,23 +101,19 @@ services:
         condition: service_healthy
     environment: *api-env
     command: ['npx', 'prisma', 'migrate', 'deploy']
-    networks: [egress, backend]
+    networks: [backend]
 
   postgres:
     <<: *logging
     image: postgres:16-alpine
     restart: unless-stopped
     stop_grace_period: 60s
-    depends_on:
-      secrets-agent:
-        condition: service_healthy
     environment:
       POSTGRES_USER: shopfast
       POSTGRES_DB: shopfast
-      POSTGRES_PASSWORD_FILE: /run/shopfast/postgres/postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - pg_secrets:/run/shopfast/postgres:ro
     networks: [backend]
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U shopfast -d shopfast']
@@ -130,47 +125,28 @@ services:
     <<: *logging
     image: redis:7-alpine
     restart: unless-stopped
-    depends_on:
-      secrets-agent:
-        condition: service_healthy
-    command: ['redis-server', '/run/shopfast/redis/redis.conf']
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - ${REDIS_PASSWORD}
+    environment:
+      # redis-cli đọc mật khẩu từ biến này, tránh lộ mật khẩu trên dòng lệnh healthcheck.
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
     volumes:
       - redisdata:/data
-      - redis_secrets:/run/shopfast/redis:ro
     networks: [backend]
     healthcheck:
-      # Không có mật khẩu trong healthcheck: NOAUTH nghĩa là server vẫn đang trả lời.
-      test: ['CMD-SHELL', "redis-cli ping | grep -qE 'PONG|NOAUTH'"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
 
-  secrets-agent:
-    <<: *logging
-    image: amazon/aws-cli:2.27.50
-    restart: unless-stopped
-    init: true
-    entrypoint: ['/bin/sh', '/opt/secrets-agent.sh']
-    environment:
-      AWS_REGION: ${AWS_REGION}
-      SSM_PARAMETER_PREFIX: /shopfast/prod
-    volumes:
-      - ./secrets/secrets-agent.sh:/opt/secrets-agent.sh:ro
-      - pg_secrets:/run/shopfast/postgres
-      - redis_secrets:/run/shopfast/redis
-    networks: [egress]
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - test -s /run/shopfast/postgres/postgres_password && test -s /run/shopfast/redis/redis.conf
-      interval: 2s
-      timeout: 2s
-      retries: 30
-
   # Chạy một lần: đổ bản build vào `web_static`, không cần khởi động lại nginx.
   web:
     <<: *logging
-    image: ${WEB_IMAGE:?Cần đặt WEB_IMAGE}:${IMAGE_TAG}
+    image: shopfast-web:${IMAGE_TAG:-latest}
     restart: 'no'
     network_mode: none
     volumes:
@@ -200,14 +176,6 @@ networks:
     internal: true
   egress:
 
-# Secret chỉ nằm trong RAM; size nhỏ vì chỉ chứa vài file.
-x-secret-volume: &secret-volume
-  driver: local
-  driver_opts:
-    type: tmpfs
-    device: tmpfs
-    o: size=1m,mode=0755
-
 volumes:
   pgdata:
   redisdata:
@@ -215,5 +183,3 @@ volumes:
   web_static:
   letsencrypt:
   certbot_www:
-  pg_secrets: *secret-volume
-  redis_secrets: *secret-volume
