@@ -2,6 +2,7 @@
 
 - **Trạng thái:** Chấp nhận
 - **Ngày:** 2026-10-31
+- **Cập nhật:** build và CD thay bằng [ADR-0014](0014-oidc-va-cong-ssh-tam-thoi.md), trình tự deploy và rollback ở [ADR-0015](0015-zero-downtime-va-gioi-han.md). Phần blue-green, secret, HTTPS, mạng vẫn có hiệu lực.
 
 ## Bối cảnh
 
@@ -61,7 +62,7 @@ Phương án đã loại:
 ## Xử lý khi sự cố
 
 - **`deploy.sh` báo màu mới không healthy:** traffic vẫn ở màu cũ. Đọc log script in ra, sửa rồi deploy lại.
-- **Rollback sau khi đã deploy:** `git checkout <commit cũ>` rồi chạy `deploy.sh`; layer đã cache nên nhanh. Migration không tự quay lui (ADR-0001).
+- **Rollback sau khi đã deploy:** `infra/scripts/rollback.sh` (ADR-0015). Migration không tự quay lui (ADR-0001).
 - **`nginx` restart liên tục:** thường thiếu `upstream/active.conf` hoặc thiếu cert. Chạy `init-letsencrypt.sh`.
 - **502 ở mọi request API:** màu trong `active.conf` không chạy. `docker compose ps`, rồi `switch-upstream.sh` sang màu đang healthy.
 - **Migration lỗi:** `deploy.sh` dừng trước khi bật màu mới, màu cũ vẫn phục vụ. Xử lý theo ADR-0001.
