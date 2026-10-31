@@ -43,7 +43,7 @@ git rev-parse origin/main
 curl -s $HOST/health/live
 ```
 
-`commit` phải bằng SHA của `main`. Nói: "Nginx chỉ đổi traffic sau khi màu mới healthy; lỗi sau khi đổi thì tự rollback".
+`commit` phải bằng SHA của `main`. Nói: "GitHub không vào được EC2. Máy tự thấy tag `production` đổi và kéo bản mới; Nginx chỉ đổi traffic sau khi màu mới healthy, lỗi sau khi đổi thì tự rollback".
 
 **Dự phòng:** mở lần chạy Deploy thành công gần nhất ở tab Actions.
 

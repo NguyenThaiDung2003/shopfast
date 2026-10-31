@@ -23,7 +23,7 @@ Tuỳ thời điểm (`infra/scripts/deploy.sh`):
 - Màu mới không healthy sau 2 phút: dừng màu mới, exit 1.
 - Sau khi đổi traffic mà `/health/live` qua Nginx sai commit: tự chạy `rollback.sh`, exit 1.
 
-Mã thoát SSH làm workflow báo đỏ. `last_good_sha` chỉ ghi khi đã đạt hết.
+Workflow chờ `/health/live` đúng SHA, quá 5 phút thì báo đỏ. `last_good_sha` chỉ ghi khi đã đạt hết.
 
 ### 3. Hai người mua món cuối cùng?
 
@@ -55,19 +55,19 @@ Dịch vụ dừng; đây là giới hạn đã chấp nhận: một EC2 là đi
 
 `backup.sh` kiểm file bằng `pg_restore --list` trước khi upload. `restore.sh` khôi phục thật vào DB mới và đối chiếu số dòng. Trích kết quả từ biên bản đã điền trong `docs/restore-drill.md`, nói đúng số đo thật.
 
-### 10. Lộ `DEPLOY_SSH_KEY` thì sao?
+### 10. Tài khoản GitHub bị chiếm thì sao?
 
-Key chỉ chạy được `shopfast-ci-entry` (`restrict,command=`), không có shell, và cổng 22 đóng với IP lạ. Nhưng `load-images` nạp được image tuỳ ý, nên coi như secret production. Xử lý: xoá dòng trong `authorized_keys`, xoá Secret, tạo key mới.
+GitHub không giữ AWS key hay SSH key nên kẻ tấn công không vào thẳng được EC2. Nhưng họ có thể đưa commit độc vào `main` và dời tag `production`, server sẽ tự deploy: quyền ghi repo tương đương quyền deploy. Bảo vệ bằng MFA GitHub và branch protection. Khi có sự cố: xoá `/etc/cron.d/shopfast` để dừng tự deploy, rồi `rollback.sh` về bản sạch.
 
 ## Quyết định kỹ thuật
 
 ### 11. Vì sao không dùng ECR và SSM như yêu cầu ban đầu?
 
-Một máy thì image nằm ngay trên máy là đủ, và rollback không phụ thuộc mạng. Giữ được mục tiêu: không access key dài hạn (OIDC), cổng 22 không thường trực, build ngoài server. Đánh đổi: còn một SSH key trong GitHub Secrets ([ADR-0014](../adr/0014-oidc-va-cong-ssh-tam-thoi.md)). Nếu lên nhiều máy, ECR và SSM sẽ đáng dùng.
+Một máy thì image nằm ngay trên máy là đủ, và rollback không phụ thuộc mạng. ECR và SSM đều cần GitHub có quyền AWS. Mô hình pull giữ được các mục tiêu: không access key dài hạn, cổng 22 chỉ cho IP quản trị, build ngoài server ([ADR-0014](../adr/0014-cd-ec2-tu-keo-ban-moi.md)). Nếu lên nhiều máy, ECR và SSM sẽ đáng dùng.
 
-### 12. OIDC an toàn hơn access key thế nào?
+### 12. Yêu cầu dùng OIDC, sao không có?
 
-Không có khoá lưu ở GitHub. Mỗi lần chạy, GitHub cấp token có `sub` ghi rõ repo và nhánh; AWS đối chiếu rồi cấp credential tạm. Trust policy khớp chính xác `repo:NguyenThaiDung2003/shopfast:ref:refs/heads/main`, nên fork hay nhánh khác không lấy được quyền.
+Nói thẳng: IAM Identity providers bị khoá theo gói tài khoản AWS đang dùng, nên không làm được; đây là điểm lệch so với yêu cầu. Mục đích của OIDC là không lưu khoá dài hạn ở GitHub. Mô hình pull đạt mục đích đó theo cách khác: GitHub không cần quyền AWS nào, chỉ dùng `GITHUB_TOKEN` tạm thời để đẩy image. Đánh đổi: deploy chậm thêm tối đa 1 phút và workflow biết lỗi muộn hơn. Nếu nâng gói, OIDC mới đáng làm khi workflow thật sự cần gọi AWS.
 
 ### 13. Zero-downtime thật sự tới mức nào?
 

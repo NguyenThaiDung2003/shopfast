@@ -26,6 +26,7 @@ flowchart TB
     green --> pg
     green --> redis
     cron[cron backup.sh]
+    puller
   end
 
   blue -->|SMTP, LLM| ext[Gmail, nhà cung cấp LLM]
@@ -33,15 +34,19 @@ flowchart TB
 
   subgraph gh[GitHub]
     actions[GitHub Actions]
+    ghcr[(GHCR)]
+    tag[Tag production]
   end
-  actions -->|OIDC, credential tạm| iam[IAM role]
-  iam -->|thêm/gỡ IP runner ở cổng 22| sg[Security Group]
-  actions -->|SSH key bị khoá lệnh| ec2
+  actions -->|đẩy image tag SHA| ghcr
+  actions -->|dời tag| tag
+  puller[cron pull-deploy.sh] -->|mỗi phút đọc tag| tag
+  puller -->|kéo image| ghcr
+  puller -->|deploy.sh| nginx
 ```
 
 Chỉ Nginx có `ports`. Mạng `backend` là `internal: true`, nên Postgres và Redis không có đường ra Internet.
 
-Không dùng ECR và SSM: image đi thẳng từ runner vào máy qua SSH ([ADR-0014](adr/0014-oidc-va-cong-ssh-tam-thoi.md)).
+GitHub không kết nối vào EC2: máy tự kéo bản mới, nên cổng 22 chỉ mở cho IP quản trị. Không dùng ECR, SSM và OIDC ([ADR-0014](adr/0014-cd-ec2-tu-keo-ban-moi.md)).
 
 ## Luồng dữ liệu
 
@@ -138,19 +143,20 @@ Model không có tool ghi trực tiếp. CAS ở `pending-actions.repository.ts:
 ```mermaid
 flowchart TB
   push[Push main] --> ci[CI: lint, unit, e2e, docker]
-  ci -->|xanh| build[Build image tag SHA trên runner]
-  build --> open[OIDC, mở cổng 22 cho IP runner]
-  open --> load[docker save qua SSH]
-  load --> mig[deploy.sh: backup nếu có migration, migrate]
+  ci -->|xanh| build[Build, đẩy image tag SHA lên GHCR]
+  build --> tag[Dời tag production]
+  tag --> wait[Workflow chờ /health/live đúng SHA, tối đa 5 phút]
+  tag -.->|cron mỗi phút| pull[EC2: kiểm commit thuộc main, kéo image]
+  pull --> mig[deploy.sh: backup nếu có migration, migrate]
   mig --> up[Bật màu còn lại]
-  up -->|không healthy sau 2 phút| keep[Dừng màu mới, giữ màu cũ, exit 1]
+  up -->|không healthy sau 2 phút| keep[Dừng màu mới, giữ màu cũ]
   up -->|healthy| sw[Đổi upstream, nginx reload]
   sw --> ver[Kiểm tra qua Nginx: đúng commit, 5 lần]
-  ver -->|lỗi| rb[rollback.sh, exit 1]
+  ver -->|lỗi| rb[rollback.sh]
   ver -->|đạt| drain[Drain 30 giây, dừng màu cũ, ghi last_good_sha]
-  keep --> close[Luôn gỡ rule cổng 22]
-  rb --> close
-  drain --> close
+  drain -.->|SHA khớp| wait
+  keep -.->|SHA không đổi, hết hạn thì workflow fail| wait
+  rb -.-> wait
 ```
 
 Chi tiết và giới hạn: [ADR-0015](adr/0015-zero-downtime-va-gioi-han.md).
@@ -170,6 +176,6 @@ Chi tiết và giới hạn: [ADR-0015](adr/0015-zero-downtime-va-gioi-han.md).
 | LLM qua `LLM_PROVIDER`      | Trợ lý CSKH                       | Đổi nhà cung cấp không sửa nghiệp vụ, người xác nhận thao tác ghi ([ADR-0011](adr/0011-ai-agent-human-in-the-loop.md)) | Cho agent ghi trực tiếp                                                          |
 | Nginx                       | TLS, proxy, web tĩnh              | Reload không rớt request, đổi upstream bằng file ([ADR-0013](adr/0013-trien-khai-production-blue-green.md))            | ALB, Traefik                                                                     |
 | Docker Compose trên một EC2 | Chạy production                   | Rẻ, đủ cho đồ án                                                                                                       | ECS, Kubernetes                                                                  |
-| GitHub Actions + OIDC       | CI/CD                             | Không có access key dài hạn ([ADR-0014](adr/0014-oidc-va-cong-ssh-tam-thoi.md))                                        | SSM, self-hosted runner                                                          |
+| GitHub Actions + GHCR       | CI/CD                             | Không có khoá nào của AWS hay server ở GitHub ([ADR-0014](adr/0014-cd-ec2-tu-keo-ban-moi.md))                          | OIDC (bị khoá theo gói tài khoản), SSM, self-hosted runner                       |
 | S3                          | Backup ngoài máy                  | Sống sót khi mất EC2 ([ADR-0016](adr/0016-backup-postgres-len-s3.md))                                                  | EBS snapshot, tải về máy cá nhân                                                 |
 | React + Vite + Tailwind     | UI demo                           | Build tĩnh, phục vụ qua Nginx                                                                                          | Next.js                                                                          |

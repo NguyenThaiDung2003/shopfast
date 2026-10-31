@@ -19,7 +19,7 @@ Production: <https://16-178-17-65.sslip.io> (một EC2, blue-green, HTTPS Let's 
 | [docs/spec-summary.md](docs/spec-summary.md)   | Các chủ đề đã tích hợp và bài toán nghiệp vụ |
 | [docs/adr/](docs/adr/)                         | Quyết định kỹ thuật                          |
 | [infra/README.md](infra/README.md)             | Triển khai và vận hành production            |
-| [infra/aws/README.md](infra/aws/README.md)     | Thiết lập IAM, OIDC, S3, Security Group      |
+| [infra/aws/README.md](infra/aws/README.md)     | Thiết lập IAM, S3, Security Group            |
 | [docs/restore-drill.md](docs/restore-drill.md) | Diễn tập khôi phục backup                    |
 | [docs/defense/](docs/defense/)                 | Dàn ý slide, kịch bản demo, câu hỏi bảo vệ   |
 | [CLAUDE.md](CLAUDE.md)                         | Quy ước phát triển                           |
@@ -27,7 +27,7 @@ Production: <https://16-178-17-65.sslip.io> (một EC2, blue-green, HTTPS Let's 
 ## CI/CD
 
 - **CI** ([ci.yml](.github/workflows/ci.yml)) chạy trên PR vào `main`: lint, unit test kèm coverage, e2e với Postgres và Redis thật, build Docker.
-- **CD** ([deploy.yml](.github/workflows/deploy.yml)) chạy khi push `main`: chạy lại CI, build image tag theo SHA, đăng nhập AWS bằng OIDC, chuyển image vào EC2, deploy blue-green. Lỗi sau khi đổi traffic thì tự rollback.
+- **CD** ([deploy.yml](.github/workflows/deploy.yml)) chạy khi push `main`: chạy lại CI, đẩy image tag theo SHA lên GHCR, dời tag `production`; EC2 tự kéo bản mới và deploy blue-green. Lỗi sau khi đổi traffic thì tự rollback.
 
 ## Chạy cục bộ
 
