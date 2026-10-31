@@ -215,6 +215,40 @@ describe('Background jobs (e2e)', () => {
       ).toBe(1);
     });
 
+    it('worker chết giữa chừng: claim còn hạn → job chờ, hết hạn → gửi, không báo đã gửi sai', async () => {
+      const order = await placeOrder();
+      const jobId = orderJobId(EmailJob.ORDER_CONFIRMATION, order.id);
+      await waitForJob(queues.email, jobId);
+      const where = { kind: EmailJob.ORDER_CONFIRMATION, ref: order.id };
+      // Dựng lại trạng thái worker chết sau khi giành claim, trước khi gửi.
+      await prisma.emailDelivery.updateMany({
+        where,
+        data: { status: 'SENDING', sentAt: null, claimedAt: new Date() },
+      });
+
+      await queues.email.add(
+        EmailJob.ORDER_CONFIRMATION,
+        { orderId: order.id, code: order.code },
+        { jobId: `${jobId}-after-crash` },
+      );
+      const delayed = await waitForJob(queues.email, `${jobId}-after-crash`, [
+        'delayed',
+        'completed',
+      ]);
+      expect(await delayed.getState()).toBe('delayed');
+      expect(subjectsFor(order.code)).toHaveLength(1);
+
+      await prisma.emailDelivery.updateMany({
+        where,
+        data: { claimedAt: new Date(Date.now() - 11 * 60_000) },
+      });
+      await delayed.promote();
+      const done = await waitForJob(queues.email, `${jobId}-after-crash`);
+
+      expect(done.returnvalue).toEqual({ status: 'sent', sent: 1 });
+      expect(subjectsFor(order.code)).toHaveLength(2);
+    });
+
     it('đẩy lại cùng jobId khi job cũ còn lưu → BullMQ bỏ qua, không chạy lần hai', async () => {
       const order = await placeOrder();
       const jobId = orderJobId(EmailJob.ORDER_CONFIRMATION, order.id);

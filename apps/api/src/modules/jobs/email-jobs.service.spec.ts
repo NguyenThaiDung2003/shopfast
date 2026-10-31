@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { OrderStatus } from '@prisma/client';
 import type { EnvironmentVariables } from '../../config/env.validation';
 import { EmailDeliveriesRepository } from './email-deliveries.repository';
-import { EmailJobsService } from './email-jobs.service';
+import { EmailClaimBusyError, EmailJobsService } from './email-jobs.service';
 import { DailyRevenue, JobsRepository, OrderForJob } from './jobs.repository';
 import { MailSender } from './mail-sender';
 
@@ -45,7 +45,7 @@ describe('EmailJobsService', () => {
     };
     let nextId = 1;
     deliveries = {
-      claim: jest.fn().mockImplementation(async () => nextId++),
+      claim: jest.fn().mockImplementation(async () => ({ status: 'claimed', id: nextId++ })),
       markSent: jest.fn().mockResolvedValue(undefined),
       release: jest.fn().mockResolvedValue(undefined),
     };
@@ -84,12 +84,24 @@ describe('EmailJobsService', () => {
     });
 
     it('đã gửi trước đó (claim thua) → không gửi lại', async () => {
-      deliveries.claim.mockResolvedValue(null);
+      deliveries.claim.mockResolvedValue({ status: 'sent' });
 
       await expect(service.sendOrderConfirmation(order.id)).resolves.toEqual({
         status: 'skipped',
         reason: 'already_sent',
       });
+      expect(mail.send).not.toHaveBeenCalled();
+      expect(deliveries.markSent).not.toHaveBeenCalled();
+    });
+
+    it('claim của lần chạy khác còn hiệu lực → chờ, không báo đã gửi (worker chết giữa chừng)', async () => {
+      deliveries.claim.mockResolvedValueOnce({ status: 'busy', retryAfterMs: 540_000 });
+
+      await expect(service.sendOrderConfirmation(order.id)).rejects.toMatchObject({
+        name: 'EmailClaimBusyError',
+        retryAfterMs: 540_000,
+      });
+
       expect(mail.send).not.toHaveBeenCalled();
       expect(deliveries.markSent).not.toHaveBeenCalled();
     });
@@ -170,7 +182,9 @@ describe('EmailJobsService', () => {
     });
 
     it('admin đã nhận → chỉ gửi cho admin còn thiếu', async () => {
-      deliveries.claim.mockResolvedValueOnce(null).mockResolvedValueOnce(7);
+      deliveries.claim
+        .mockResolvedValueOnce({ status: 'sent' })
+        .mockResolvedValueOnce({ status: 'claimed', id: 7 });
 
       await expect(service.sendDailyRevenueReport('2026-10-29')).resolves.toEqual({
         status: 'sent',
@@ -181,7 +195,7 @@ describe('EmailJobsService', () => {
     });
 
     it('mọi admin đã nhận → skipped', async () => {
-      deliveries.claim.mockResolvedValue(null);
+      deliveries.claim.mockResolvedValue({ status: 'sent' });
 
       await expect(service.sendDailyRevenueReport('2026-10-29')).resolves.toEqual({
         status: 'skipped',
@@ -197,6 +211,17 @@ describe('EmailJobsService', () => {
       );
       expect(mail.send).toHaveBeenCalledTimes(2);
       expect(deliveries.markSent).toHaveBeenCalledTimes(1);
+    });
+
+    it('một admin bị giữ claim → vẫn gửi người còn lại rồi chờ theo claim lâu nhất', async () => {
+      deliveries.claim
+        .mockResolvedValueOnce({ status: 'busy', retryAfterMs: 1_000 })
+        .mockResolvedValueOnce({ status: 'claimed', id: 9 });
+
+      await expect(service.sendDailyRevenueReport()).rejects.toBeInstanceOf(EmailClaimBusyError);
+
+      expect(mail.send).toHaveBeenCalledTimes(1);
+      expect(deliveries.markSent).toHaveBeenCalledWith(9);
     });
 
     it('không có admin → skipped', async () => {

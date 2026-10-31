@@ -48,7 +48,9 @@ Payload chỉ chứa `orderId` và `code`; worker tự đọc dữ liệu mới 
 1. **jobId cố định** `<loại job>-<orderId>`, ví dụ `order-confirmation-<uuid>`. BullMQ cấm dấu `:` trong id. Đẩy lại cùng jobId trong lúc job cũ còn lưu trong Redis thì BullMQ bỏ qua.
 2. **Bảng `email_deliveries`**, unique `(kind, ref)`. `ref` là orderId, hoặc `<ngày>:<adminId>` với báo cáo.
    - Trước khi gửi, worker **giành quyền** bằng một câu `INSERT … ON CONFLICT DO UPDATE … WHERE status = 'SENDING' AND claimed_at < now() − 10 phút RETURNING id`.
-   - Giành được → gửi → `SENT`. Không giành được → bỏ qua, job hoàn tất với `skipped: already_sent`.
+   - Giành được → gửi → `SENT`.
+   - Dòng đã `SENT` → bỏ qua, job hoàn tất với `skipped: already_sent`.
+   - Dòng còn `SENDING` của lần chạy khác → job **hoãn** tới lúc claim hết hạn (`moveToDelayed` + `DelayedError`, không tính vào số lần thử). Không được coi là đã gửi: BullMQ chạy lại job treo sau khoảng 30 giây, sớm hơn nhiều so với 10 phút, nên nếu bỏ qua ở đây thì không còn lần chạy nào giành lại claim và thư mất vĩnh viễn.
    - Gửi lỗi → xoá dòng giành quyền rồi ném lỗi để BullMQ thử lại.
    - `Message-ID` cố định `<loại.ref@shopfast.local>`.
 
