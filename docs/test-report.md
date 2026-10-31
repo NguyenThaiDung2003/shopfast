@@ -4,15 +4,16 @@ Thực hiện ngày 2026-11-01 (giờ Việt Nam), trên commit `01e28da` của 
 
 ## Tóm tắt
 
-| Nhóm                            | Môi trường | Kết quả                                          |
-| ------------------------------- | ---------- | ------------------------------------------------ |
-| Bảo mật từ bên ngoài            | Production | 32/32 đạt, thêm kiểm tra TLS, header, cổng       |
-| Reboot EC2                      | Production | Đạt, gián đoạn khoảng 46 giây                    |
-| Tranh chấp đồng thời            | Stack dev  | 15/15 đạt                                        |
-| Giao diện bằng trình duyệt thật | Stack dev  | 34/35, 1 lần không tái hiện được                 |
-| Hỏng hạ tầng                    | Stack dev  | Tìm ra 1 lỗi mất email, đã sửa                   |
-| Đo tải                          | Stack dev  | 0 lỗi, chỉ để so sánh                            |
-| Prompt injection với LLM thật   |            | **Chưa kiểm chứng được**, key Gemini bị giới hạn |
+| Nhóm                            | Môi trường | Kết quả                                                  |
+| ------------------------------- | ---------- | -------------------------------------------------------- |
+| Bảo mật từ bên ngoài            | Production | 32/32 đạt, thêm kiểm tra TLS, header, cổng               |
+| Reboot EC2                      | Production | Đạt, gián đoạn khoảng 46 giây                            |
+| Cron backup                     | Production | Đạt: tự chạy 19:00 UTC ngày 2026-10-31, file mới trên S3 |
+| Tranh chấp đồng thời            | Stack dev  | 15/15 đạt                                                |
+| Giao diện bằng trình duyệt thật | Stack dev  | 34/35, 1 lần không tái hiện được                         |
+| Hỏng hạ tầng                    | Stack dev  | Tìm ra 1 lỗi mất email, đã sửa                           |
+| Đo tải                          | Stack dev  | 0 lỗi, chỉ để so sánh                                    |
+| Prompt injection với LLM thật   |            | **Chưa kiểm chứng được**, key Gemini bị giới hạn         |
 
 Stack dev là máy Windows 8 GB chạy Docker Desktop, nên số tải không đại diện cho production. Các script kiểm thử chạy một lần, không nằm trong repo; test tái hiện lỗi đã thêm vào `email-jobs.service.spec.ts` và `jobs.e2e-spec.ts`.
 
@@ -109,7 +110,7 @@ autocannon 10 kết nối, 10 giây, tắt rate limit.
 
 - **Prompt injection với LLM thật:** Gemini trả `rate_limited` suốt thời gian thử. Hệ thống an toàn ở tầng thiết kế (model không có tool ghi) và có unit test, nhưng chưa có kết quả chạy thật.
 - **Trợ lý AI trên giao diện:** cùng lý do. Luồng API đã đạt trước đó trên production.
-- **Cron backup tự chạy:** xem `/var/log/shopfast/backup.log` sau 02:00 giờ Việt Nam.
+
 - **Banner 429 và email qua Gmail thật** trên trình duyệt: chưa thử.
 - **Tải trên production:** cố ý không làm.
 - **Mất EC2 hoàn toàn:** chưa dựng lại trên máy mới.
