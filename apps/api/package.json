@@ -94,7 +94,6 @@
     "testEnvironment": "node",
     "collectCoverageFrom": [
       "**/*.service.ts",
-      "common/**/*.ts",
       "!database/**"
     ],
     "coverageDirectory": "../coverage",
