@@ -120,6 +120,7 @@ Em xin hết. Em cảm ơn thầy cô đã lắng nghe và mong nhận được 
 
 ## Khi có sự cố trong demo
 
+- **Cần chứng minh email chạy thật:** đặt một đơn mới rồi mở Gmail; thư có tiêu đề `[Gửi cho: …]`.
 - **Trợ lý AI báo lỗi:** "Nhà cung cấp mô hình đang giới hạn. Hệ thống trả 503 tiếng Việt và không lộ chi tiết, đó chính là cách suy giảm có kiểm soát." Sau đó chiếu video.
 - **Mạng hội trường lỗi:** "Em xin chuyển sang video đã quay từ hệ thống thật."
 - **Quá giờ:** bỏ Bull Board trước, sau đó bỏ tắt Redis và nói kết quả ở slide 9.

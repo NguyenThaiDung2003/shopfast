@@ -23,6 +23,7 @@ export interface MailSender {
 export class SmtpMailSender implements MailSender {
   private readonly transporter: Transporter;
   private readonly from: string;
+  private readonly redirectTo?: string;
 
   constructor(config: ConfigService<EnvironmentVariables, true>) {
     const user = config.get('SMTP_USER', { infer: true });
@@ -35,9 +36,14 @@ export class SmtpMailSender implements MailSender {
       socketTimeout: 20_000,
     });
     this.from = config.get('MAIL_FROM', { infer: true });
+    this.redirectTo = config.get('MAIL_REDIRECT_TO', { infer: true });
   }
 
   async send({ to, subject, text, messageId }: MailMessage): Promise<void> {
-    await this.transporter.sendMail({ from: this.from, to, subject, text, messageId });
+    // Demo: tài khoản mẫu không có hộp thư thật, gom thư về một nơi và giữ lại người nhận gốc.
+    const envelope = this.redirectTo
+      ? { to: this.redirectTo, subject: `[Gửi cho: ${to}] ${subject}` }
+      : { to, subject };
+    await this.transporter.sendMail({ from: this.from, ...envelope, text, messageId });
   }
 }

@@ -9,7 +9,7 @@ infra/     Hạ tầng triển khai
 docs/adr/  Architecture Decision Records
 ```
 
-Production: <https://16-178-17-65.sslip.io> (một EC2, blue-green, HTTPS Let's Encrypt).
+Production: <https://shopfast-ntd.id.vn> (một EC2, blue-green, HTTPS Let's Encrypt).
 
 ## Tài liệu
 

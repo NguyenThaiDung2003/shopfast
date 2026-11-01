@@ -6,7 +6,7 @@ Thời lượng 3 phút trên sân khấu. Pipeline mất vài phút, nên push 
 
 ```bash
 # Trên máy bạn, đặt biến dùng cho toàn bộ kịch bản
-export HOST=https://16-178-17-65.sslip.io
+export HOST=https://shopfast-ntd.id.vn
 # Lấy trên server: grep SEED_USER_PASSWORD ~/shopfast/infra/.env
 export PASS='<SEED_USER_PASSWORD>'
 ```
@@ -119,7 +119,7 @@ Bật lại ngay:
 
 ```bash
 docker compose -f docker-compose.prod.yml start redis
-curl -s https://16-178-17-65.sslip.io/health
+curl -s https://shopfast-ntd.id.vn/health
 ```
 
 ## Sau demo
@@ -144,4 +144,4 @@ git branch -d demo/pipeline
 
 ## Lưu ý về email
 
-Tài khoản `@shopfast.local` không có hộp thư thật. Đơn mới và báo cáo doanh thu hằng ngày vẫn gửi qua Gmail tới các địa chỉ này, nên Gmail của bạn có thể nhận thư báo không gửi được. Đổi trạng thái và huỷ đơn không gửi email.
+Tài khoản `@shopfast.local` không có hộp thư thật. Production đặt `MAIL_REDIRECT_TO=dunghmqd@gmail.com`, nên thư đặt đơn, nhắc thanh toán và báo cáo ngày đều về Gmail đó, tiêu đề ghi người nhận gốc. Đổi trạng thái và huỷ đơn không gửi email. OTP chỉ ghi vào log. Muốn demo email: đặt đơn mới rồi mở Gmail.

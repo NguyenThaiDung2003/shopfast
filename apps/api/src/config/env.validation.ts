@@ -53,6 +53,7 @@ export interface EnvironmentVariables {
   SMTP_USER?: string;
   SMTP_PASSWORD?: string;
   MAIL_FROM: string;
+  MAIL_REDIRECT_TO?: string;
   INVOICE_STORAGE_DIR: string;
   /** Tỉ lệ lỗi ngẫu nhiên của API đối tác giả lập (0–1), để demo retry. */
   PARTNER_FAILURE_RATE: number;
@@ -144,6 +145,7 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   SMTP_USER: Joi.string().allow('').optional(),
   SMTP_PASSWORD: Joi.string().allow('').optional(),
   MAIL_FROM: Joi.string().default('ShopFast <no-reply@shopfast.local>'),
+  MAIL_REDIRECT_TO: Joi.string().email({ tlds: false }).empty(''),
   INVOICE_STORAGE_DIR: Joi.string().default('./storage/invoices'),
   PARTNER_FAILURE_RATE: Joi.number().min(0).max(1).default(0.3),
   PARTNER_LATENCY_MS: Joi.number().integer().min(0).max(60_000).default(200),

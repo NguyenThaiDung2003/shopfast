@@ -84,7 +84,7 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 
 - BullMQ (`modules/jobs/`): queue `email`, `invoice`, `inventory-sync`, `dead-letter`; số lần thử + backoff exponential từng queue trong `queues.ts`. Job đẩy từ `OrderJobsListener` (event sau commit), API không chờ.
 - **jobId cố định** `<loại job>-<orderId>` (`orderJobId`, không dùng `:`); payload chỉ mang id, worker đọc lại DB và **kiểm lại trạng thái** khi chạy.
-- Email gửi qua `MailSender` và **phải** đi qua `EmailJobsService.deliverOnce` (giành quyền trong `email_deliveries` trước khi gửi). Email loại mới = thêm vào `EmailJob`, không gửi thẳng.
+- Email gửi qua `MailSender` và **phải** đi qua `EmailJobsService.deliverOnce` (giành quyền trong `email_deliveries` trước khi gửi). Email loại mới = thêm vào `EmailJob`, không gửi thẳng. `MAIL_REDIRECT_TO` (demo) gom mọi thư về một địa chỉ ở `SmtpMailSender`; `email_deliveries` vẫn ghi người nhận gốc.
 - Processor chỉ định tuyến job → service, kế thừa `ReportingWorkerHost` (dead-letter + log lỗi worker). Lỗi thử lại vô ích → `UnrecoverableError`.
 - Kết nối Redis của BullMQ riêng (`queue-connection.ts`), không dùng `REDIS_CLIENT`. `QUEUE_WORKERS_ENABLED=false` → chỉ đẩy job (test tắt sẵn trong `setup-env.ts`; `jobs.e2e-spec.ts` tự bật).
 - Bull Board `/admin/queues` (ngoài `/api`) tự kiểm ADMIN bằng `TokenService`; Mailpit UI ở dev: `http://127.0.0.1:8025`.
