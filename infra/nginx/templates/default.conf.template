@@ -33,7 +33,7 @@ server {
 
 server {
     listen 80;
-    server_name ${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN};
 
     # Let's Encrypt HTTP-01: certbot ghi vào webroot này (cả lần cấp đầu và gia hạn).
     location /.well-known/acme-challenge/ {

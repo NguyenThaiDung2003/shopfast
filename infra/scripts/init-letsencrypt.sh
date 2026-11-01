@@ -50,7 +50,7 @@ remove_cert
 # shellcheck disable=SC2086 # $staging rỗng thì không truyền đối số nào
 if ! $compose run --rm --no-deps --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
-  -d "$DOMAIN" \
+  -d "$DOMAIN" -d "www.$DOMAIN" \
   --email "$LETSENCRYPT_EMAIL" \
   --agree-tos --no-eff-email --non-interactive $staging; then
   dummy_cert

@@ -54,6 +54,8 @@ Payload chỉ chứa `orderId` và `code`; worker tự đọc dữ liệu mới 
    - Gửi lỗi → xoá dòng giành quyền rồi ném lỗi để BullMQ thử lại.
    - `Message-ID` cố định `<loại.ref@shopfast.local>`.
 
+**Thư demo.** Tài khoản mẫu dùng `@shopfast.local`, không có hộp thư thật. Đặt `MAIL_REDIRECT_TO` thì `SmtpMailSender` gửi mọi thư về địa chỉ đó, tiêu đề ghi `[Gửi cho: <người nhận gốc>]`; `email_deliveries` vẫn ghi người nhận gốc nên chống trùng không đổi. Chỉ dùng cho demo: dữ liệu của nhiều khách đi vào cùng một hộp thư.
+
 **Dead-letter tự làm.** BullMQ không có dead-letter queue sẵn.
 
 - Sự kiện `failed` của worker phát **sau mỗi lần thử lỗi**. `DeadLetterService` chỉ chép job sang `dead-letter` khi `attemptsMade ≥ attempts`, hoặc khi lỗi là `UnrecoverableError` (ví dụ đơn không tồn tại: thử lại cũng vô ích).

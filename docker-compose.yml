@@ -116,6 +116,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-ShopFast <no-reply@shopfast.local>}
+      MAIL_REDIRECT_TO: ${MAIL_REDIRECT_TO:-}
       INVOICE_STORAGE_DIR: /data/invoices
       PARTNER_FAILURE_RATE: ${PARTNER_FAILURE_RATE:-0.3}
       PARTNER_LATENCY_MS: ${PARTNER_LATENCY_MS:-200}
