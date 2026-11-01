@@ -28,7 +28,7 @@ Stack dev là máy Windows 8 GB chạy Docker Desktop, nên số tải không đ
 
 ### Header lộ thông tin, thiếu CSP (đã sửa trong cấu hình)
 
-Response có `Server: nginx/1.28.3` và `X-Powered-By: Express`, trang web chưa có Content-Security-Policy trong khi token nằm ở localStorage. Đã thêm `server_tokens off`, ẩn `X-Powered-By`, và CSP cho trang web. Cấu hình qua `nginx -t`; **CSP chưa được kiểm tra trên trình duyệt production** cho tới khi merge và restart Nginx.
+Response có `Server: nginx/1.28.3` và `X-Powered-By: Express`, trang web chưa có Content-Security-Policy trong khi token nằm ở localStorage. Đã thêm `server_tokens off`, ẩn `X-Powered-By`, và CSP cho trang web. Đã kiểm tra bằng Chromium trên production: 0 vi phạm CSP ở 6 trang, font, ảnh, WebSocket và Bull Board đều chạy.
 
 ### Trang chủ 375 px tràn ngang một lần (không tái hiện)
 
