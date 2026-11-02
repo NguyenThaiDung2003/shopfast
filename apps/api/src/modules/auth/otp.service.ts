@@ -3,18 +3,21 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '../../common/exceptions/app.exception';
 import type { EnvironmentVariables } from '../../config/env.validation';
-import { SendOtpDto } from './dto/send-otp.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { UsersRepository } from '../users/users.repository';
+import { OtpPurpose, SendOtpDto } from './dto/send-otp.dto';
 import { OTP_SENDER, OtpSender } from './otp-sender';
 import { OtpRepository } from './otp.repository';
+
+/** Khớp `RESEND_SECONDS` của web. */
+const RESEND_COOLDOWN_SECONDS = 30;
 
 function hashCode(code: string): Buffer {
   return createHash('sha256').update(code).digest();
 }
 
 /**
- * OTP 6 chữ số lưu trong Redis có TTL. Không kiểm tra email có tồn tại hay không
- * để không lộ thông tin tài khoản. Rate limit gửi mã: `@RateLimit('otpSend')` (ADR-0008).
+ * OTP 6 chữ số lưu trong Redis có TTL. Phản hồi như nhau dù email có tài khoản hay không để không
+ * lộ thông tin; chỉ tài khoản đủ điều kiện mới nhận thư. Rate limit: ADR-0008, luồng: ADR-0017.
  */
 @Injectable()
 export class OtpService {
@@ -24,6 +27,7 @@ export class OtpService {
 
   constructor(
     private readonly otpRepository: OtpRepository,
+    private readonly usersRepository: UsersRepository,
     @Inject(OTP_SENDER) private readonly otpSender: OtpSender,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
@@ -32,19 +36,29 @@ export class OtpService {
   }
 
   async send({ email, purpose }: SendOtpDto): Promise<{ expiresInSeconds: number }> {
+    const result = { expiresInSeconds: this.ttlSeconds };
+    const key = this.key(email, purpose);
+    const claimed = await this.withRedis(() =>
+      this.otpRepository.claimCooldown(`${key}:cooldown`, RESEND_COOLDOWN_SECONDS),
+    );
+    // Mã cũ vẫn dùng được; gửi lại dồn dập không làm đầy hộp thư của người khác.
+    if (!claimed) return result;
+
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     await this.withRedis(() =>
-      this.otpRepository.save(
-        this.key(email, purpose),
-        hashCode(code).toString('hex'),
-        this.ttlSeconds,
-      ),
+      this.otpRepository.save(key, hashCode(code).toString('hex'), this.ttlSeconds),
     );
-    await this.otpSender.send({ email, purpose, code, expiresInSeconds: this.ttlSeconds });
-    return { expiresInSeconds: this.ttlSeconds };
+    if (await this.canReceive(email, purpose)) {
+      // Không chờ SMTP: thời gian phản hồi không được cho biết email có tài khoản hay không.
+      void this.otpSender
+        .send({ email, purpose, code, expiresInSeconds: this.ttlSeconds })
+        .catch((error: Error) => this.logger.error(`OTP mail failed: ${error.message}`));
+    }
+    return result;
   }
 
-  async verify({ email, purpose, code }: VerifyOtpDto): Promise<{ verified: true }> {
+  /** Kiểm và huỷ mã (dùng một lần); sai thì ném lỗi. */
+  async consume(email: string, purpose: OtpPurpose, code: string): Promise<void> {
     const key = this.key(email, purpose);
     const stored = await this.withRedis(() => this.otpRepository.find(key));
     if (!stored) throw invalidOtp();
@@ -66,11 +80,17 @@ export class OtpService {
 
     // Mã chỉ dùng được một lần.
     await this.withRedis(() => this.otpRepository.delete(key));
-    return { verified: true };
+  }
+
+  private async canReceive(email: string, purpose: OtpPurpose): Promise<boolean> {
+    const status = await this.usersRepository.findEmailStatus(email);
+    if (!status) return false;
+    return purpose === OtpPurpose.RESET_PASSWORD || status.emailVerifiedAt === null;
   }
 
   private key(email: string, purpose: string): string {
-    return `otp:${purpose}:${email}`;
+    // Redis không chứa email thô, như LoginAttemptsRepository.
+    return `otp:${purpose}:${createHash('sha256').update(email).digest('hex')}`;
   }
 
   /** Redis lỗi → 503 tiếng Việt; phần còn lại của API (đăng nhập, sản phẩm) vẫn chạy. */
@@ -88,7 +108,7 @@ export class OtpService {
   }
 }
 
-function invalidOtp(): AppException {
+export function invalidOtp(): AppException {
   return new AppException(
     HttpStatus.BAD_REQUEST,
     'OTP_INVALID',

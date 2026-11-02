@@ -14,7 +14,9 @@ process.env.TRUST_PROXY = '1';
 // rate-limit.e2e-spec.ts tự hạ hạn mức (test/rate-limit.env.ts).
 process.env.RATE_LIMIT_GLOBAL = '100000/60';
 process.env.RATE_LIMIT_LOGIN = '100000/60';
+process.env.RATE_LIMIT_REGISTER = '100000/60';
 process.env.RATE_LIMIT_OTP_SEND = '100000/60';
+process.env.RATE_LIMIT_OTP_VERIFY = '100000/60';
 process.env.RATE_LIMIT_PROMO_ORDER = '100000/60';
 process.env.RATE_LIMIT_AI_ASSISTANT = '100000/60';
 process.env.RATE_LIMIT_TICKET_CREATE = '100000/60';

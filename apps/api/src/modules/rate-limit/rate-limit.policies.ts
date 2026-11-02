@@ -6,7 +6,10 @@ export const GLOBAL_POLICY = 'global';
 /** Hạn mức riêng, chặt hơn, chỉ áp cho route gắn `@RateLimit(tên)`. */
 export const RATE_LIMIT_POLICIES = {
   login: 'RATE_LIMIT_LOGIN',
+  register: 'RATE_LIMIT_REGISTER',
   otpSend: 'RATE_LIMIT_OTP_SEND',
+  /** Nhập mã OTP: chặn dò mã từ một IP trên nhiều email. */
+  otpVerify: 'RATE_LIMIT_OTP_VERIFY',
   promoOrder: 'RATE_LIMIT_PROMO_ORDER',
   /** Mỗi lượt hỏi trợ lý AI tốn tiền gọi LLM (F06). */
   aiAssistant: 'RATE_LIMIT_AI_ASSISTANT',

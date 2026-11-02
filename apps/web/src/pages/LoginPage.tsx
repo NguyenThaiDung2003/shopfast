@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { isApiError } from '../api/errors';
 import { rateLimitStore } from '../api/rate-limit';
 import { isEmailFormat, validateLogin, type LoginErrors } from '../auth/login-form';
@@ -22,9 +22,10 @@ function redirectTarget(next: string | null, role: Role): string {
 export function LoginPage() {
   const session = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const login = useLogin();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState((location.state as { email?: string } | null)?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<LoginErrors>({});
@@ -50,6 +51,9 @@ export function LoginPage() {
           navigate(redirectTarget(params.get('next'), result.user.role), { replace: true }),
         onError: (error) => {
           if (isApiError(error) && error.code === 'LOGIN_LOCKED') setLockedEmail(email.trim());
+          if (isApiError(error) && error.code === 'EMAIL_NOT_VERIFIED') {
+            navigate('/xac-minh-otp', { state: { email: email.trim() } });
+          }
         },
       },
     );
@@ -162,15 +166,23 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-space-lg text-center">
-            <Link
-              to="/xac-minh-otp"
-              state={isEmailFormat(email) ? { email: email.trim() } : undefined}
-              className="text-title-sm text-primary hover:underline"
-            >
-              Xác minh email bằng mã OTP
-            </Link>
-          </p>
+          <div className="mt-space-lg space-y-space-sm text-center text-body-md text-on-surface-variant">
+            <p>
+              <Link
+                to="/quen-mat-khau"
+                state={isEmailFormat(email) ? { email: email.trim() } : undefined}
+                className="text-title-sm text-primary hover:underline"
+              >
+                Quên mật khẩu?
+              </Link>
+            </p>
+            <p>
+              Chưa có tài khoản?{' '}
+              <Link to="/dang-ky" className="text-title-sm text-primary hover:underline">
+                Tạo tài khoản
+              </Link>
+            </p>
+          </div>
         </Card>
       </div>
     </div>

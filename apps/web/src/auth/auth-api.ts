@@ -28,6 +28,17 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   return result;
 }
 
+export interface RegisterInput extends LoginInput {
+  fullName: string;
+}
+
+/** Không tạo phiên: phải xác minh email bằng OTP rồi mới đăng nhập được. */
+export function register(
+  input: RegisterInput,
+): Promise<{ email: string; expiresInSeconds: number }> {
+  return api.post('/auth/register', input, { auth: false });
+}
+
 /** Thu hồi phiên của refresh token hiện tại; lỗi mạng vẫn đăng xuất phía client. */
 export async function logout(): Promise<void> {
   const refreshToken = sessionStore.getSnapshot()?.refreshToken;

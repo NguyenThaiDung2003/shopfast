@@ -13,7 +13,7 @@ Tổng 11 slide. Phần demo chiếm nhiều thời gian nhất vì rubric ưu t
 | 7   | 3:00       | Demo trực tiếp               | Sản phẩm chạy thật     | Theo `demo-script.md`: pipeline, realtime, 429, agent, Bull Board, tắt Redis                                         |
 | 8   | 0:50       | Pipeline và rollback         | Tự động hoá triển khai | Luồng deploy; kết quả đo thật: tổng thời gian, thời gian rollback                                                    |
 | 9   | 0:50       | Bảo mật và vận hành          | Bảo mật và vận hành    | EC2 tự kéo bản mới nên cổng 22 chỉ cho IP quản trị, SG, secret; backup S3, biên bản diễn tập; suy giảm khi Redis lỗi |
-| 10  | 0:40       | Chất lượng mã                | Chất lượng mã          | Tách controller/service/repository, 16 ADR, coverage service, CI bắt buộc                                            |
+| 10  | 0:40       | Chất lượng mã                | Chất lượng mã          | Tách controller/service/repository, 17 ADR, coverage service, CI bắt buộc                                            |
 | 11  | 0:30       | Giới hạn và hướng phát triển |                        | Một EC2 là điểm lỗi đơn, RPO 24 giờ; bước tiếp: nhiều máy, WAL archiving                                             |
 
 ## Số liệu cần điền từ lần chạy thật

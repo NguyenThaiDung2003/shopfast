@@ -3,7 +3,11 @@ import { AppException } from '../../common/exceptions/app.exception';
 import { PublicUser, toPublicUser, UsersRepository } from '../users/users.repository';
 import type { AuthResult, AuthTokens, ClientContext } from './auth.types';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { OtpPurpose } from './dto/send-otp.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { LoginAttemptsService } from './login-attempts.service';
+import { invalidOtp, OtpService } from './otp.service';
 import { PasswordHasher } from './password-hasher';
 import { TokenService } from './token.service';
 
@@ -23,18 +27,47 @@ export class AuthService {
     private readonly passwordHasher: PasswordHasher,
     private readonly tokenService: TokenService,
     private readonly loginAttempts: LoginAttemptsService,
+    private readonly otpService: OtpService,
   ) {}
 
-  /** Đăng ký luôn tạo vai trò CUSTOMER; tài khoản nhân viên do admin cấp. */
-  async register(dto: RegisterDto, client: ClientContext): Promise<AuthResult> {
+  /**
+   * Đăng ký luôn tạo vai trò CUSTOMER; tài khoản nhân viên do admin cấp.
+   * Chưa cấp token: phải xác minh email bằng OTP rồi mới đăng nhập được (ADR-0017).
+   */
+  async register(dto: RegisterDto): Promise<{ email: string; expiresInSeconds: number }> {
     const passwordHash = await this.passwordHasher.hash(dto.password);
-    const user = await this.usersRepository.create({
+    const { email } = await this.usersRepository.create({
       email: dto.email,
       fullName: dto.fullName,
       passwordHash,
     });
-    const tokens = await this.tokenService.issueTokens(user, client);
-    return { user, ...tokens };
+    try {
+      const { expiresInSeconds } = await this.otpService.send({
+        email,
+        purpose: OtpPurpose.VERIFY_EMAIL,
+      });
+      return { email, expiresInSeconds };
+    } catch {
+      // Tài khoản đã tạo; OtpService đã log, người dùng bấm gửi lại ở trang xác minh.
+      return { email, expiresInSeconds: 0 };
+    }
+  }
+
+  async verifyEmail({ email, purpose, code }: VerifyOtpDto): Promise<{ verified: true }> {
+    await this.otpService.consume(email, purpose, code);
+    await this.usersRepository.markEmailVerified(email);
+    return { verified: true };
+  }
+
+  /** Nhận được mã tức là giữ hộp thư, nên email cũng được coi là đã xác minh. */
+  async resetPassword({ email, code, newPassword }: ResetPasswordDto): Promise<void> {
+    await this.otpService.consume(email, OtpPurpose.RESET_PASSWORD, code);
+    const passwordHash = await this.passwordHasher.hash(newPassword);
+    const userId = await this.usersRepository.updatePassword(email, passwordHash);
+    if (!userId) throw invalidOtp();
+    await this.usersRepository.markEmailVerified(email);
+    await this.tokenService.revokeAllForUser(userId);
+    await this.loginAttempts.reset(email);
   }
 
   async login(dto: LoginDto, client: ClientContext): Promise<AuthResult> {
@@ -52,6 +85,14 @@ export class AuthService {
     }
 
     await this.loginAttempts.reset(dto.email);
+    // Kiểm sau mật khẩu: người không biết mật khẩu không biết được trạng thái tài khoản.
+    if (!user.emailVerifiedAt) {
+      throw new AppException(
+        HttpStatus.FORBIDDEN,
+        'EMAIL_NOT_VERIFIED',
+        'Email chưa được xác minh, vui lòng nhập mã OTP để kích hoạt tài khoản.',
+      );
+    }
     const tokens = await this.tokenService.issueTokens(user, client);
     return { user: toPublicUser(user), ...tokens };
   }

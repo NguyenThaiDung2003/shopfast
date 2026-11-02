@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import type { EnvironmentVariables } from '../../config/env.validation';
+import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -10,7 +11,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { LoginAttemptsRepository } from './login-attempts.repository';
 import { LoginAttemptsService } from './login-attempts.service';
-import { LogOtpSender, OTP_SENDER } from './otp-sender';
+import { MailOtpSender, OTP_SENDER } from './otp-sender';
 import { OtpRepository } from './otp.repository';
 import { OtpService } from './otp.service';
 import { PasswordHasher } from './password-hasher';
@@ -20,6 +21,7 @@ import { TokenService } from './token.service';
 @Module({
   imports: [
     UsersModule,
+    MailModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
@@ -42,7 +44,7 @@ import { TokenService } from './token.service';
     LoginAttemptsRepository,
     OtpService,
     OtpRepository,
-    { provide: OTP_SENDER, useClass: LogOtpSender },
+    { provide: OTP_SENDER, useClass: MailOtpSender },
     // Thứ tự quan trọng: xác thực trước, kiểm vai trò sau.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

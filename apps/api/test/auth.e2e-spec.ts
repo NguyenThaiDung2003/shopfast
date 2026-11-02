@@ -38,17 +38,38 @@ describe('Auth (e2e)', () => {
   });
 
   describe('đăng ký', () => {
-    it('201: tạo CUSTOMER và trả cặp token, không lộ passwordHash', async () => {
+    it('201: tạo CUSTOMER, gửi OTP, không cấp token', async () => {
       const res = await http
         .post('/api/auth/register')
         .send({ ...CUSTOMER, email: '  Khach.E2E@ShopFast.local ', role: Role.ADMIN })
         .expect(201);
 
-      expect(res.body.user).toMatchObject({ email: CUSTOMER.email, role: Role.CUSTOMER });
-      expect(res.body.user).not.toHaveProperty('passwordHash');
-      expect(res.body).toMatchObject({ tokenType: 'Bearer', expiresIn: 900 });
-      expect(res.body.accessToken).toEqual(expect.any(String));
-      expect(res.body.refreshToken).toEqual(expect.any(String));
+      expect(res.body).toEqual({ email: CUSTOMER.email, expiresInSeconds: 300 });
+      expect(otpSender.lastCodeFor(CUSTOMER.email)).toMatch(/^\d{6}$/);
+      const user = await app
+        .get(PrismaService)
+        .user.findUniqueOrThrow({ where: { email: CUSTOMER.email } });
+      expect(user).toMatchObject({ role: Role.CUSTOMER, emailVerifiedAt: null });
+    });
+
+    it('403 EMAIL_NOT_VERIFIED: đúng mật khẩu nhưng chưa xác minh; sai mật khẩu vẫn 401', async () => {
+      const res = await login(CUSTOMER.email, PASSWORD).expect(403);
+
+      expect(res.body.code).toBe('EMAIL_NOT_VERIFIED');
+      await login(CUSTOMER.email, 'SaiMatKhau9').expect(401);
+    });
+
+    it('200: nhập đúng OTP thì đăng nhập được', async () => {
+      await http
+        .post('/api/auth/otp/verify')
+        .send({
+          email: CUSTOMER.email,
+          purpose: 'VERIFY_EMAIL',
+          code: otpSender.lastCodeFor(CUSTOMER.email),
+        })
+        .expect(200, { verified: true });
+
+      await login(CUSTOMER.email, PASSWORD).expect(200);
     });
 
     it('409: email đã tồn tại', async () => {
@@ -240,13 +261,17 @@ describe('Auth (e2e)', () => {
   });
 
   describe('OTP', () => {
-    const otpRequest = { email: CUSTOMER.email, purpose: 'VERIFY_EMAIL' };
+    const email = 'otp.e2e@shopfast.local';
+    const otpRequest = { email, purpose: 'VERIFY_EMAIL' };
 
     it('202 gửi mã → 400 sai mã → 200 đúng mã → mã không dùng lại được', async () => {
+      await app.get(PrismaService).user.create({
+        data: { email, fullName: 'Khách OTP', passwordHash: 'x', emailVerifiedAt: null },
+      });
       const sent = await http.post('/api/auth/otp/send').send(otpRequest).expect(202);
       expect(sent.body).toEqual({ expiresInSeconds: 300 });
 
-      const code = otpSender.lastCodeFor(CUSTOMER.email);
+      const code = otpSender.lastCodeFor(email);
       expect(code).toMatch(/^\d{6}$/);
       const wrong = code === '000000' ? '111111' : '000000';
 
@@ -265,6 +290,89 @@ describe('Auth (e2e)', () => {
         .post('/api/auth/otp/verify')
         .send({ ...otpRequest, code })
         .expect(400);
+    });
+
+    it('email lạ và email đã xác minh: vẫn 202 nhưng không có thư', async () => {
+      const before = otpSender.sent.length;
+      for (const target of ['khongco@shopfast.local', ADMIN_EMAIL]) {
+        await http
+          .post('/api/auth/otp/send')
+          .send({ email: target, purpose: 'VERIFY_EMAIL' })
+          .expect(202);
+      }
+      expect(otpSender.sent).toHaveLength(before);
+    });
+
+    it('gửi lại trong 30 giây: 202, không có mã mới', async () => {
+      const target = { email: ADMIN_EMAIL, purpose: 'RESET_PASSWORD' };
+      await http.post('/api/auth/otp/send').send(target).expect(202);
+      const before = otpSender.sent.length;
+
+      await http.post('/api/auth/otp/send').send(target).expect(202);
+
+      expect(otpSender.sent).toHaveLength(before);
+    });
+
+    it('/otp/verify từ chối mục đích RESET_PASSWORD', async () => {
+      await http
+        .post('/api/auth/otp/verify')
+        .send({ email: ADMIN_EMAIL, purpose: 'RESET_PASSWORD', code: '123456' })
+        .expect(400);
+    });
+  });
+
+  describe('quên mật khẩu', () => {
+    const email = 'quenmk.e2e@shopfast.local';
+    const NEW_PASSWORD = 'MatKhauMoi456';
+
+    it('đổi mật khẩu, thu hồi phiên, mã không dùng lại; mật khẩu yếu bị từ chối', async () => {
+      await app.get(PrismaService).user.create({
+        data: { email, fullName: 'Khách Quên', passwordHash: await hash(PASSWORD, 4) },
+      });
+      const { body: session } = await login(email, PASSWORD).expect(200);
+      await http.post('/api/auth/otp/send').send({ email, purpose: 'RESET_PASSWORD' }).expect(202);
+      const code = otpSender.lastCodeFor(email);
+
+      await http
+        .post('/api/auth/password/reset')
+        .send({ email, code, newPassword: 'yeu' })
+        .expect(400);
+      await http
+        .post('/api/auth/password/reset')
+        .send({ email, code, newPassword: NEW_PASSWORD })
+        .expect(204);
+
+      await login(email, PASSWORD).expect(401);
+      await login(email, NEW_PASSWORD).expect(200);
+      await http.post('/api/auth/refresh').send({ refreshToken: session.refreshToken }).expect(401);
+      await http
+        .post('/api/auth/password/reset')
+        .send({ email, code, newPassword: NEW_PASSWORD })
+        .expect(400);
+    });
+
+    it('đăng ký hộ email người khác: chủ email đặt lại mật khẩu, mật khẩu cũ mất tác dụng', async () => {
+      const victim = { email: 'nannhan.e2e@shopfast.local', fullName: 'Nạn Nhân' };
+      await http
+        .post('/api/auth/register')
+        .send({ ...victim, password: PASSWORD })
+        .expect(201);
+      await http
+        .post('/api/auth/otp/send')
+        .send({ email: victim.email, purpose: 'RESET_PASSWORD' })
+        .expect(202);
+
+      await http
+        .post('/api/auth/password/reset')
+        .send({
+          email: victim.email,
+          code: otpSender.lastCodeFor(victim.email),
+          newPassword: NEW_PASSWORD,
+        })
+        .expect(204);
+
+      await login(victim.email, PASSWORD).expect(401);
+      await login(victim.email, NEW_PASSWORD).expect(200);
     });
   });
 });

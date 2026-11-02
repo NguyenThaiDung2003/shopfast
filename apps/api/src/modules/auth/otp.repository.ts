@@ -23,6 +23,11 @@ export class OtpRepository {
     if (!results || failed) throw failed?.[0] ?? new Error('Redis transaction aborted');
   }
 
+  /** true nếu giành được lượt gửi; false nếu còn trong thời gian chờ. */
+  async claimCooldown(key: string, seconds: number): Promise<boolean> {
+    return (await this.redis.set(key, '1', 'EX', seconds, 'NX')) === 'OK';
+  }
+
   async find(key: string): Promise<StoredOtp | null> {
     const data = await this.redis.hgetall(key);
     if (!data.codeHash) return null;

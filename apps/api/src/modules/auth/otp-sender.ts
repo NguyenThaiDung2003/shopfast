@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { EnvironmentVariables } from '../../config/env.validation';
-import type { OtpPurpose } from './dto/send-otp.dto';
+import { randomUUID } from 'node:crypto';
+import { Inject, Injectable } from '@nestjs/common';
+import { MAIL_SENDER, MailSender } from '../mail/mail-sender';
+import { OtpPurpose } from './dto/send-otp.dto';
 
 export const OTP_SENDER = Symbol('OTP_SENDER');
 
@@ -12,25 +12,40 @@ export interface OtpMessage {
   expiresInSeconds: number;
 }
 
-/** Kênh gửi OTP. Bản hiện tại giả lập; sau này thay bằng email/SMS provider. */
+/** Kênh gửi OTP; test thay bằng bản ghi lại mã. */
 export interface OtpSender {
   send(message: OtpMessage): Promise<void>;
 }
 
-@Injectable()
-export class LogOtpSender implements OtpSender {
-  private readonly logger = new Logger('OtpSender');
-  private readonly revealCode: boolean;
+const CONTENT: Record<OtpPurpose, { subject: string; action: string }> = {
+  [OtpPurpose.VERIFY_EMAIL]: {
+    subject: 'Mã xác minh email ShopFast',
+    action: 'xác minh email',
+  },
+  [OtpPurpose.RESET_PASSWORD]: {
+    subject: 'Mã đặt lại mật khẩu ShopFast',
+    action: 'đặt lại mật khẩu',
+  },
+};
 
-  constructor(config: ConfigService<EnvironmentVariables, true>) {
-    this.revealCode = config.get('NODE_ENV', { infer: true }) !== 'production';
-  }
+/** Gửi thẳng, không qua queue: payload job hiện trên Bull Board sẽ làm lộ mã (ADR-0017). */
+@Injectable()
+export class MailOtpSender implements OtpSender {
+  constructor(@Inject(MAIL_SENDER) private readonly mailSender: MailSender) {}
 
   async send({ email, purpose, code, expiresInSeconds }: OtpMessage): Promise<void> {
-    // Không bao giờ ghi mã OTP vào log ở production.
-    const shown = this.revealCode ? code : '******';
-    this.logger.log(
-      `[GIẢ LẬP] Gửi OTP ${purpose} tới ${email}: ${shown} (hết hạn ${expiresInSeconds}s)`,
-    );
+    const { subject, action } = CONTENT[purpose];
+    await this.mailSender.send({
+      to: email,
+      subject,
+      text: [
+        `Mã ${action} của bạn là: ${code}`,
+        `Mã có hiệu lực trong ${Math.ceil(expiresInSeconds / 60)} phút và chỉ dùng được một lần.`,
+        'Không chia sẻ mã này cho bất kỳ ai, kể cả nhân viên hỗ trợ.',
+        'Nếu bạn không yêu cầu, hãy bỏ qua email này.',
+      ].join('\n\n'),
+      // Mỗi mã là một thư riêng, không để hệ thống nhận gộp như thư trùng.
+      messageId: `<otp.${randomUUID()}@shopfast.local>`,
+    });
   }
 }

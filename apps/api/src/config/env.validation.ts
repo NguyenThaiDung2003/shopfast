@@ -33,7 +33,9 @@ export interface EnvironmentVariables {
   /** Hạn mức dạng "<số request>/<giây>". */
   RATE_LIMIT_GLOBAL: string;
   RATE_LIMIT_LOGIN: string;
+  RATE_LIMIT_REGISTER: string;
   RATE_LIMIT_OTP_SEND: string;
+  RATE_LIMIT_OTP_VERIFY: string;
   RATE_LIMIT_PROMO_ORDER: string;
   /** Số lần đăng nhập sai liên tiếp (theo email) trước khi khoá. */
   LOGIN_MAX_FAILED_ATTEMPTS: number;
@@ -123,7 +125,9 @@ export const envValidationSchema = Joi.object<EnvironmentVariables>({
   RATE_LIMIT_ENABLED: Joi.boolean().default(true),
   RATE_LIMIT_GLOBAL: Joi.string().pattern(RATE_LIMIT_PATTERN).default('300/60'),
   RATE_LIMIT_LOGIN: Joi.string().pattern(RATE_LIMIT_PATTERN).default('10/60'),
+  RATE_LIMIT_REGISTER: Joi.string().pattern(RATE_LIMIT_PATTERN).default('5/300'),
   RATE_LIMIT_OTP_SEND: Joi.string().pattern(RATE_LIMIT_PATTERN).default('3/300'),
+  RATE_LIMIT_OTP_VERIFY: Joi.string().pattern(RATE_LIMIT_PATTERN).default('10/60'),
   RATE_LIMIT_PROMO_ORDER: Joi.string().pattern(RATE_LIMIT_PATTERN).default('5/60'),
   LOGIN_MAX_FAILED_ATTEMPTS: Joi.number().integer().min(1).max(100).default(5),
   LOGIN_FAILURE_WINDOW_SECONDS: Joi.number().integer().min(60).max(86_400).default(900),

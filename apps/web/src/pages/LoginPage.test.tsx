@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { rateLimitStore } from '../api/rate-limit';
 import { apiError, fakeApi, json, type FakeHandler } from '../test/fake-api';
 import { renderPage } from '../test/render';
+import { ForgotPasswordPage } from './ForgotPasswordPage';
 import { LoginPage } from './LoginPage';
 import { OtpVerifyPage } from './OtpVerifyPage';
 
@@ -114,19 +115,39 @@ describe('LoginPage', () => {
     expect(submit()).toBeDisabled();
   });
 
-  it('link OTP mang theo email đã nhập nhưng không để email trên URL', async () => {
-    fakeApi({});
-    const { user, location } = renderPage(
+  const withAuthRoutes = () =>
+    renderPage(
       <Routes>
         <Route path="/dang-nhap" element={<LoginPage />} />
         <Route path="/xac-minh-otp" element={<OtpVerifyPage />} />
+        <Route path="/quen-mat-khau" element={<ForgotPasswordPage />} />
       </Routes>,
       { route: '/dang-nhap', path: '/*' },
     );
-    await user.type(emailBox(), 'a@shopfast.local');
-    await user.click(screen.getByRole('link', { name: 'Xác minh email bằng mã OTP' }));
 
-    expect(location()).toBe('/xac-minh-otp');
+  it('link Quên mật khẩu mang theo email đã nhập nhưng không để email trên URL', async () => {
+    fakeApi({});
+    const { user, location } = withAuthRoutes();
+    await user.type(emailBox(), 'a@shopfast.local');
+    await user.click(screen.getByRole('link', { name: 'Quên mật khẩu?' }));
+
+    expect(location()).toBe('/quen-mat-khau');
     expect(emailBox()).toHaveValue('a@shopfast.local');
+  });
+
+  it('chưa xác minh email → chuyển sang trang OTP, giữ email', async () => {
+    fakeApi({
+      'POST /auth/login': () => apiError(403, 'EMAIL_NOT_VERIFIED', 'Email chưa được xác minh.'),
+    });
+    const { user, location } = withAuthRoutes();
+    await fill(user);
+
+    await waitFor(() => expect(location()).toBe('/xac-minh-otp'));
+    expect(emailBox()).toHaveValue('a@shopfast.local');
+  });
+
+  it('có link tạo tài khoản', () => {
+    setup(() => json(authResult('CUSTOMER')));
+    expect(screen.getByRole('link', { name: 'Tạo tài khoản' })).toHaveAttribute('href', '/dang-ky');
   });
 });

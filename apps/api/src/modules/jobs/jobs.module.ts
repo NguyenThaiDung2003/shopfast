@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../../config/env.validation';
 import { HealthModule } from '../health/health.module';
+import { MailModule } from '../mail/mail.module';
 import { SupportModule } from '../support/support.module';
 import { DeadLetterService } from './dead-letter.service';
 import { EmailDeliveriesRepository } from './email-deliveries.repository';
@@ -11,7 +12,6 @@ import { InventorySyncService } from './inventory-sync.service';
 import { InvoiceService } from './invoice.service';
 import { JobsAdminController } from './jobs-admin.controller';
 import { JobsRepository } from './jobs.repository';
-import { MAIL_SENDER, SmtpMailSender } from './mail-sender';
 import { OrderJobsListener } from './order-jobs.listener';
 import { OrderJobsService } from './order-jobs.service';
 import { FakePartnerInventoryClient, PARTNER_INVENTORY_CLIENT } from './partner-inventory.client';
@@ -34,6 +34,7 @@ import { WorkersBootstrapService } from './workers-bootstrap.service';
     SupportModule,
     // Worker chờ ShutdownService.drained() trước khi đóng (ADR-0012).
     HealthModule,
+    MailModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
@@ -75,7 +76,6 @@ import { WorkersBootstrapService } from './workers-bootstrap.service';
     InventorySyncProcessor,
     TicketClassifyProcessor,
     WorkersBootstrapService,
-    { provide: MAIL_SENDER, useClass: SmtpMailSender },
     { provide: PARTNER_INVENTORY_CLIENT, useClass: FakePartnerInventoryClient },
   ],
 })

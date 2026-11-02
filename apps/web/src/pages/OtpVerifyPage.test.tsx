@@ -8,7 +8,9 @@ import { OtpVerifyPage } from './OtpVerifyPage';
 const EMAIL = 'nguyen.minh@email.vn';
 const ROUTE = { pathname: '/xac-minh-otp', state: { email: EMAIL } };
 
-function setup(routes: Record<string, FakeHandler> = {}, route: typeof ROUTE | string = ROUTE) {
+type Route = { pathname: string; state: object } | string;
+
+function setup(routes: Record<string, FakeHandler> = {}, route: Route = ROUTE) {
   const api = fakeApi({
     'POST /auth/otp/send': () => json({ expiresInSeconds: 300 }, 202),
     'POST /auth/otp/verify': () => json({ verified: true }),
@@ -64,12 +66,32 @@ describe('OtpVerifyPage', () => {
     expect(box(6)).toHaveValue('6');
     await user.click(confirm());
 
-    expect(await screen.findByRole('heading', { name: 'Mã xác thực hợp lệ' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Email đã được xác minh' }),
+    ).toBeInTheDocument();
     expect(api.to('POST /auth/otp/verify')[0]!.body).toEqual({
       email: EMAIL,
       purpose: 'VERIFY_EMAIL',
       code: '123456',
     });
+  });
+
+  it('đến từ trang đăng ký → vào thẳng bước nhập mã, không gửi lại', async () => {
+    const { api } = setup(
+      {},
+      { pathname: '/xac-minh-otp', state: { email: EMAIL, expiresInSeconds: 300 } },
+    );
+
+    expect(await screen.findByRole('group', { name: 'Mã OTP' })).toBeInTheDocument();
+    expect(api.to('POST /auth/otp/send')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: /Gửi lại mã \d+s/ })).toBeDisabled();
+  });
+
+  it('đăng ký xong nhưng chưa gửi được mã (hạn 0) → gửi lại được ngay', async () => {
+    setup({}, { pathname: '/xac-minh-otp', state: { email: EMAIL, expiresInSeconds: 0 } });
+
+    expect(await screen.findByText('Mã đã hết hạn, vui lòng gửi lại mã mới.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gửi lại mã' })).toBeEnabled();
   });
 
   it('mã thiếu → không gọi API', async () => {

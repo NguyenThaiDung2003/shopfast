@@ -5,7 +5,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { REDIS_CLIENT } from '../src/database/redis.constants';
 import { OTP_SENDER, OtpMessage, OtpSender } from '../src/modules/auth/otp-sender';
-import { MAIL_SENDER, MailMessage, MailSender } from '../src/modules/jobs/mail-sender';
+import { MAIL_SENDER, MailMessage, MailSender } from '../src/modules/mail/mail-sender';
 
 /** Bắt lại OTP thay vì "gửi", để test đọc được mã. */
 export class CapturingOtpSender implements OtpSender {

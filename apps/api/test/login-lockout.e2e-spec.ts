@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import type Redis from 'ioredis';
 import request, { Response } from 'supertest';
 import { formatWait } from '../src/common/messages/vi';
+import { PrismaService } from '../src/database/prisma.service';
 import { REDIS_CLIENT } from '../src/database/redis.constants';
 import { loginAttemptKeys } from '../src/modules/auth/login-attempts.repository';
 import { createTestApp } from './create-test-app';
@@ -45,6 +46,9 @@ describe('Khoá đăng nhập theo email (e2e)', () => {
       .set('X-Forwarded-For', nextIp())
       .send({ email, password: PASSWORD, fullName: 'Khách khoá' })
       .expect(201);
+    await app
+      .get(PrismaService)
+      .user.update({ where: { email }, data: { emailVerifiedAt: new Date() } });
     return email;
   }
 

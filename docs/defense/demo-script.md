@@ -144,4 +144,6 @@ git branch -d demo/pipeline
 
 ## Lưu ý về email
 
-Tài khoản `@shopfast.local` không có hộp thư thật. Production đặt `MAIL_REDIRECT_TO=dunghmqd@gmail.com`, nên thư đặt đơn, nhắc thanh toán và báo cáo ngày đều về Gmail đó, tiêu đề ghi người nhận gốc. Đổi trạng thái và huỷ đơn không gửi email. OTP chỉ ghi vào log. Muốn demo email: đặt đơn mới rồi mở Gmail.
+Tài khoản `@shopfast.local` không có hộp thư thật. Production đặt `MAIL_REDIRECT_TO=dunghmqd@gmail.com`, nên thư đặt đơn, nhắc thanh toán và báo cáo ngày đều về Gmail đó, tiêu đề ghi người nhận gốc. Đổi trạng thái và huỷ đơn không gửi email. OTP đăng ký và quên mật khẩu cũng về Gmail đó. Muốn demo email: đặt đơn mới rồi mở Gmail.
+
+Đừng thử quên mật khẩu trên tài khoản seed: mật khẩu demo sẽ đổi, sai kịch bản này. Khi thử, đăng ký tài khoản mới ở `/dang-ky`.

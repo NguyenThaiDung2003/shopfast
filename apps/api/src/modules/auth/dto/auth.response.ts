@@ -21,6 +21,13 @@ export class OtpSentDto {
   expiresInSeconds!: number;
 }
 
+export class RegisterResultDto {
+  /** Email đã đăng ký, cần xác minh bằng OTP trước khi đăng nhập. */
+  email!: string;
+  /** Số giây mã OTP còn hiệu lực; 0 nếu chưa gửi được, người dùng cần bấm gửi lại. */
+  expiresInSeconds!: number;
+}
+
 export class OtpVerifiedDto {
   @ApiProperty({ enum: [true] })
   verified!: true;

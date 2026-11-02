@@ -8,7 +8,9 @@ import type { RouteHandle } from '../layouts/StaffLayout';
 import { CartPage } from '../pages/CartPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { HomePage } from '../pages/HomePage';
+import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
 import { LoginPage } from '../pages/LoginPage';
+import { RegisterPage } from '../pages/RegisterPage';
 import { MyOrdersPage } from '../pages/MyOrdersPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { OrderSuccessPage } from '../pages/OrderSuccessPage';
@@ -93,6 +95,8 @@ export const routes: RouteObject[] = [
         element: <AuthLayout />,
         children: [
           { path: 'dang-nhap', element: <LoginPage /> },
+          { path: 'dang-ky', element: <RegisterPage /> },
+          { path: 'quen-mat-khau', element: <ForgotPasswordPage /> },
           { path: 'xac-minh-otp', element: <OtpVerifyPage /> },
           { path: 'loi-he-thong', element: <SystemErrorPage /> },
         ],

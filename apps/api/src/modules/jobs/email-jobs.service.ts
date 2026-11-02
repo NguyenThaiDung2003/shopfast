@@ -11,7 +11,7 @@ import {
   paymentReminderEmail,
 } from './email-templates';
 import { JobsRepository, OrderForJob } from './jobs.repository';
-import { MAIL_SENDER, MailSender } from './mail-sender';
+import { MAIL_SENDER, MailSender } from '../mail/mail-sender';
 import { EmailJob, EmailJobName } from './queues';
 import { dayRange, reportDate } from './report-period';
 
