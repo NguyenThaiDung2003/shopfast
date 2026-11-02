@@ -102,13 +102,13 @@ Về vận hành, backup lên S3 hằng ngày. Em đã diễn tập khôi phục
 
 ## Slide 10. Chất lượng mã (0:40)
 
-Chất lượng được máy kiểm tra ở mỗi pull request: 407 unit test API, 303 test web, 186 test end-to-end với Postgres và Redis thật, coverage tầng service 94 phần trăm.
+Chất lượng được máy kiểm tra ở mỗi pull request: 423 unit test API, 316 test web, 193 test end-to-end với Postgres và Redis thật, coverage tầng service 94 phần trăm.
 
 Bốn kiểm tra này là bắt buộc, kể cả quản trị viên cũng không bỏ qua được.
 
 Khi kiểm thử phá hoại, em cố ý giết tiến trình và phát hiện email xác nhận có thể bị mất. Em đã thêm test tái hiện rồi sửa lỗi đó.
 
-Mười sáu ADR ghi lại lý do, đánh đổi và cách xử lý sự cố của từng quyết định.
+Mười bảy ADR ghi lại lý do, đánh đổi và cách xử lý sự cố của từng quyết định.
 
 ## Slide 11. Giới hạn (0:30)
 

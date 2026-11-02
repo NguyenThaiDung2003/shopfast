@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from '../../config/env.validation';
 import { EmailDeliveriesRepository } from './email-deliveries.repository';
 import { EmailClaimBusyError, EmailJobsService } from './email-jobs.service';
 import { DailyRevenue, JobsRepository, OrderForJob } from './jobs.repository';
-import { MailSender } from './mail-sender';
+import { MailSender } from '../mail/mail-sender';
 
 const order: OrderForJob = {
   id: '6f1d0c8e-0000-4000-8000-000000000001',

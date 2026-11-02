@@ -4,6 +4,9 @@ import { IsEmail, IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'cl
 export const normalizeEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 
+/** Có cả chữ và số. */
+export const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d)/;
+
 export class RegisterDto {
   /** Email đăng nhập (không phân biệt hoa thường). */
   @Transform(normalizeEmail)
@@ -15,7 +18,7 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(72)
-  @Matches(/^(?=.*[A-Za-z])(?=.*\d)/)
+  @Matches(PASSWORD_RULE)
   password!: string;
 
   /** Họ tên hiển thị (2–100 ký tự). */

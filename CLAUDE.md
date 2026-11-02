@@ -42,6 +42,7 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Không bao giờ trả `passwordHash` ra ngoài – dùng `PublicUser` / `toPublicUser` của `users.repository.ts`.
 - Kiểm token ở nơi khác (WebSocket F02…) dùng `TokenService.verifyAccessToken` – không tự viết lại.
 - Redis dùng qua token `REDIS_CLIENT` (`src/database/redis.module.ts`); client fail-fast, nơi gọi phải bắt lỗi và suy giảm có kiểm soát (ví dụ `OtpService` trả 503).
+- Đăng ký không cấp token: phải nhập OTP (`email_verified_at`, chỉ `POST /auth/register` ghi NULL), chưa xác minh đăng nhập trả 403 `EMAIL_NOT_VERIFIED`. `POST /auth/otp/send` luôn trả 202 như nhau để không dò được email; khoá Redis dùng sha256(email) (ADR-0017).
 - Id số trên URL parse bằng `ParseIdPipe` (`src/common/pipes/parse-id.pipe.ts`), không dùng `ParseIntPipe`.
 
 ## Domain event (ADR-0004)
@@ -84,7 +85,7 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 
 - BullMQ (`modules/jobs/`): queue `email`, `invoice`, `inventory-sync`, `dead-letter`; số lần thử + backoff exponential từng queue trong `queues.ts`. Job đẩy từ `OrderJobsListener` (event sau commit), API không chờ.
 - **jobId cố định** `<loại job>-<orderId>` (`orderJobId`, không dùng `:`); payload chỉ mang id, worker đọc lại DB và **kiểm lại trạng thái** khi chạy.
-- Email gửi qua `MailSender` và **phải** đi qua `EmailJobsService.deliverOnce` (giành quyền trong `email_deliveries` trước khi gửi). Email loại mới = thêm vào `EmailJob`, không gửi thẳng. `MAIL_REDIRECT_TO` (demo) gom mọi thư về một địa chỉ ở `SmtpMailSender`; `email_deliveries` vẫn ghi người nhận gốc.
+- Email gửi qua `MailSender` và **phải** đi qua `EmailJobsService.deliverOnce` (giành quyền trong `email_deliveries` trước khi gửi). Email loại mới = thêm vào `EmailJob`, không gửi thẳng. `MAIL_REDIRECT_TO` (demo) gom mọi thư về một địa chỉ ở `SmtpMailSender`; `email_deliveries` vẫn ghi người nhận gốc. Ngoại lệ duy nhất là OTP: gửi thẳng qua `OtpSender`, không qua queue vì payload job sẽ lộ mã (ADR-0017). `MailSender` nằm ở `modules/mail/`.
 - Processor chỉ định tuyến job → service, kế thừa `ReportingWorkerHost` (dead-letter + log lỗi worker). Lỗi thử lại vô ích → `UnrecoverableError`.
 - Kết nối Redis của BullMQ riêng (`queue-connection.ts`), không dùng `REDIS_CLIENT`. `QUEUE_WORKERS_ENABLED=false` → chỉ đẩy job (test tắt sẵn trong `setup-env.ts`; `jobs.e2e-spec.ts` tự bật).
 - Bull Board `/admin/queues` (ngoài `/api`) tự kiểm ADMIN bằng `TokenService`; Mailpit UI ở dev: `http://127.0.0.1:8025`.
@@ -139,6 +140,10 @@ Lỗi nghiệp vụ: ném `AppException(status, code, thôngĐiệpTiếngViệt
 - Request ghi có rủi ro bấm trùng (`POST /orders`…) gửi `Idempotency-Key` từ `newIdempotencyKey()` (`lib/idempotency.ts`), **sinh một lần cho mỗi lần đặt**: giữ key khi lỗi thử lại được (mạng, 5xx, 429, `IDEMPOTENCY_CONFLICT`), bỏ key khi thành công, lỗi nghiệp vụ hoặc dữ liệu gửi đi đổi (mẫu: `cart/usePlaceOrder.ts`).
 - Test web: Vitest + Testing Library (`pnpm --filter @shopfast/web test`, cũng chạy trong `pnpm test`). File `*.test.ts(x)` cạnh code; render trang bằng `renderPage` (`src/test/render.tsx`), giả API bằng `fakeApi` + `loginAs` (`src/test/fake-api.ts`) – thay `fetch`, request vẫn đi qua `api/client.ts` thật; **không** gọi API thật. Truy vấn theo role/label (a11y), không theo class.
 - Biến môi trường web có tiền tố `VITE_`, khai báo kiểu ở `src/vite-env.d.ts` và `apps/web/.env.example`. Không đặt secret ở web (mọi thứ trong bundle đều công khai).
+
+## Môi trường Node
+
+Test web chỉ chạy đúng trên Node 20 (`.nvmrc`); Node 26 làm mọi test web lỗi `AbortSignal`.
 
 ## Tài liệu API (Swagger)
 

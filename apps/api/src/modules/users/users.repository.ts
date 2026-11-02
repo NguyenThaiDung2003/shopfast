@@ -37,10 +37,32 @@ export class UsersRepository {
     return this.prisma.user.findUnique({ where: { id }, select: publicUserSelect });
   }
 
+  findEmailStatus(email: string): Promise<{ emailVerifiedAt: Date | null } | null> {
+    return this.prisma.user.findUnique({ where: { email }, select: { emailVerifiedAt: true } });
+  }
+
+  /** Không ghi đè mốc xác minh đầu tiên. */
+  async markEmailVerified(email: string): Promise<void> {
+    await this.prisma.user.updateMany({
+      where: { email, emailVerifiedAt: null },
+      data: { emailVerifiedAt: new Date() },
+    });
+  }
+
+  /** Trả id user, `null` nếu email không tồn tại. */
+  async updatePassword(email: string, passwordHash: string): Promise<string | null> {
+    const [user] = await this.prisma.user.updateManyAndReturn({
+      where: { email },
+      data: { passwordHash },
+      select: { id: true },
+    });
+    return user?.id ?? null;
+  }
+
   async create(input: CreateUserInput): Promise<PublicUser> {
     try {
       return await this.prisma.user.create({
-        data: { ...input, role: Role.CUSTOMER },
+        data: { ...input, role: Role.CUSTOMER, emailVerifiedAt: null },
         select: publicUserSelect,
       });
     } catch (error) {

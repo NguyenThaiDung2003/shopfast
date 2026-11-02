@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import Redis from 'ioredis';
 import request, { Response } from 'supertest';
 import { formatWait } from '../src/common/messages/vi';
+import { PrismaService } from '../src/database/prisma.service';
 import { REDIS_CLIENT } from '../src/database/redis.constants';
 import { createTestApp } from './create-test-app';
 
@@ -34,11 +35,20 @@ describe('Rate limit (e2e)', () => {
   const from = (ip: string) => ({ 'X-Forwarded-For': ip });
 
   async function registerCustomer(): Promise<string> {
-    const res = await http
+    const email = `rl${++userSeq}@shopfast.local`;
+    await http
       .post('/api/auth/register')
       .set(from(nextIp()))
-      .send({ email: `rl${++userSeq}@shopfast.local`, password: PASSWORD, fullName: 'Khách RL' })
+      .send({ email, password: PASSWORD, fullName: 'Khách RL' })
       .expect(201);
+    await app
+      .get(PrismaService)
+      .user.update({ where: { email }, data: { emailVerifiedAt: new Date() } });
+    const res = await http
+      .post('/api/auth/login')
+      .set(from(nextIp()))
+      .send({ email, password: PASSWORD })
+      .expect(200);
     return res.body.accessToken as string;
   }
 

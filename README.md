@@ -175,17 +175,18 @@ curl -X PATCH http://localhost:3000/api/orders/$ORDER_ID/status -H "Authorizatio
 
 Mọi endpoint yêu cầu `Authorization: Bearer <accessToken>` trừ các endpoint công khai (health, products, các endpoint đăng ký/đăng nhập/refresh/logout/OTP). Thiết kế: [ADR-0003](docs/adr/0003-quan-ly-refresh-token.md).
 
-| Method | Endpoint               | Quyền        | Mô tả                                                     |
-| ------ | ---------------------- | ------------ | --------------------------------------------------------- |
-| POST   | `/api/auth/register`   | công khai    | Đăng ký (luôn là CUSTOMER)                                |
-| POST   | `/api/auth/login`      | công khai    | Trả `accessToken` (15 phút) + `refreshToken` (7 ngày)     |
-| POST   | `/api/auth/refresh`    | công khai    | Đổi refresh token lấy cặp token mới (token cũ bị thu hồi) |
-| POST   | `/api/auth/logout`     | công khai    | Thu hồi phiên của refresh token gửi lên                   |
-| POST   | `/api/auth/logout-all` | đã đăng nhập | Thu hồi mọi phiên của user                                |
-| GET    | `/api/auth/me`         | đã đăng nhập | Thông tin user hiện tại                                   |
-| POST   | `/api/auth/otp/send`   | công khai    | Gửi OTP giả lập (mã in ra log api ở dev)                  |
-| POST   | `/api/auth/otp/verify` | công khai    | Xác thực OTP                                              |
-| GET    | `/api/users`           | ADMIN        | Danh sách user                                            |
+| Method | Endpoint                   | Quyền        | Mô tả                                                                                                 |
+| ------ | -------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| POST   | `/api/auth/register`       | công khai    | Đăng ký (luôn là CUSTOMER), gửi OTP, chưa cấp token                                                   |
+| POST   | `/api/auth/login`          | công khai    | Trả `accessToken` (15 phút) + `refreshToken` (7 ngày). Chưa xác minh email → 403 `EMAIL_NOT_VERIFIED` |
+| POST   | `/api/auth/refresh`        | công khai    | Đổi refresh token lấy cặp token mới (token cũ bị thu hồi)                                             |
+| POST   | `/api/auth/logout`         | công khai    | Thu hồi phiên của refresh token gửi lên                                                               |
+| POST   | `/api/auth/logout-all`     | đã đăng nhập | Thu hồi mọi phiên của user                                                                            |
+| GET    | `/api/auth/me`             | đã đăng nhập | Thông tin user hiện tại                                                                               |
+| POST   | `/api/auth/otp/send`       | công khai    | Gửi OTP qua email (luôn 202, mỗi email 30 giây một lần)                                               |
+| POST   | `/api/auth/otp/verify`     | công khai    | Xác minh email bằng OTP                                                                               |
+| POST   | `/api/auth/password/reset` | công khai    | Đặt lại mật khẩu bằng OTP, thu hồi mọi phiên (204)                                                    |
+| GET    | `/api/users`               | ADMIN        | Danh sách user                                                                                        |
 
 ```bash
 # Đăng nhập bằng tài khoản seed (mật khẩu = SEED_USER_PASSWORD trong .env)
@@ -196,22 +197,25 @@ TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
 
 curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/users   # admin: 200, customer: 403
 
-# OTP: gửi rồi xem mã trong log api
-curl -X POST http://localhost:3000/api/auth/otp/send -H "Content-Type: application/json" \
-  -d '{"email":"customer01@shopfast.local","purpose":"VERIFY_EMAIL"}'
-docker compose logs api | grep "GIẢ LẬP"
+# Đăng ký: mã OTP xem trong Mailpit (http://127.0.0.1:8025)
+curl -X POST http://localhost:3000/api/auth/register -H "Content-Type: application/json" \
+  -d '{"email":"khach@example.com","password":"MatKhau123","fullName":"Khách Mới"}'
 ```
+
+Thiết kế luồng đăng ký, OTP và quên mật khẩu: [ADR-0017](docs/adr/0017-xac-minh-email-otp.md).
 
 #### Rate limit & khoá đăng nhập
 
 Bộ đếm nằm trong Redis nên đúng khi chạy nhiều instance ([ADR-0008](docs/adr/0008-rate-limit-va-khoa-dang-nhap.md)). Đếm theo user khi đã đăng nhập, theo IP khi chưa (IP thật lấy qua `X-Forwarded-For`, cần `TRUST_PROXY=1` khi đứng sau Nginx – xem [infra/nginx/api.conf](infra/nginx/api.conf)).
 
-| Hạn mức (mặc định) | Áp cho                    | Biến môi trường          |
-| ------------------ | ------------------------- | ------------------------ |
-| 300 request / 60 s | toàn API, gộp mọi route   | `RATE_LIMIT_GLOBAL`      |
-| 10 request / 60 s  | `POST /api/auth/login`    | `RATE_LIMIT_LOGIN`       |
-| 3 request / 5 phút | `POST /api/auth/otp/send` | `RATE_LIMIT_OTP_SEND`    |
-| 5 request / 60 s   | `POST /api/orders`        | `RATE_LIMIT_PROMO_ORDER` |
+| Hạn mức (mặc định)  | Áp cho                                                       | Biến môi trường          |
+| ------------------- | ------------------------------------------------------------ | ------------------------ |
+| 300 request / 60 s  | toàn API, gộp mọi route                                      | `RATE_LIMIT_GLOBAL`      |
+| 10 request / 60 s   | `POST /api/auth/login`                                       | `RATE_LIMIT_LOGIN`       |
+| 3 request / 5 phút  | `POST /api/auth/otp/send`                                    | `RATE_LIMIT_OTP_SEND`    |
+| 5 request / 5 phút  | `POST /api/auth/register`                                    | `RATE_LIMIT_REGISTER`    |
+| 10 request / 1 phút | `POST /api/auth/otp/verify`, `POST /api/auth/password/reset` | `RATE_LIMIT_OTP_VERIFY`  |
+| 5 request / 60 s    | `POST /api/orders`                                           | `RATE_LIMIT_PROMO_ORDER` |
 
 Vượt hạn mức → `429 TOO_MANY_REQUESTS`, header `Retry-After` và `details.retryAfterSeconds`. Ngoài ra, sai mật khẩu 5 lần liên tiếp cho **cùng một email** (từ bất kỳ IP nào) → `429 LOGIN_LOCKED`, khoá 1 phút; các lần khoá sau 5 phút rồi 30 phút; đăng nhập đúng thì reset. Redis lỗi thì cả hai cơ chế tạm cho qua và log cảnh báo.
 

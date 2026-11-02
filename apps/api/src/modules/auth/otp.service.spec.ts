@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../../config/env.validation';
+import { UsersRepository } from '../users/users.repository';
 import { OtpPurpose } from './dto/send-otp.dto';
 import { OtpSender } from './otp-sender';
 import { OtpRepository } from './otp.repository';
@@ -8,29 +9,72 @@ import { OtpService } from './otp.service';
 
 const email = 'customer01@shopfast.local';
 const purpose = OtpPurpose.VERIFY_EMAIL;
-const key = `otp:${purpose}:${email}`;
-const sha256 = (code: string) => createHash('sha256').update(code).digest('hex');
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const key = `otp:${purpose}:${sha256(email)}`;
 
 describe('OtpService', () => {
   let repository: jest.Mocked<
-    Pick<OtpRepository, 'save' | 'find' | 'incrementAttempts' | 'delete'>
+    Pick<OtpRepository, 'claimCooldown' | 'save' | 'find' | 'incrementAttempts' | 'delete'>
   >;
+  let users: jest.Mocked<Pick<UsersRepository, 'findEmailStatus'>>;
   let sender: jest.Mocked<OtpSender>;
   let service: OtpService;
 
   beforeEach(() => {
     repository = {
+      claimCooldown: jest.fn().mockResolvedValue(true),
       save: jest.fn().mockResolvedValue(undefined),
       find: jest.fn(),
       incrementAttempts: jest.fn(),
       delete: jest.fn().mockResolvedValue(undefined),
     };
+    users = { findEmailStatus: jest.fn().mockResolvedValue({ emailVerifiedAt: null }) };
     sender = { send: jest.fn().mockResolvedValue(undefined) };
     const config = {
       get: (k: string) => ({ OTP_TTL_SECONDS: 300, OTP_MAX_ATTEMPTS: 3 })[k],
     } as unknown as ConfigService<EnvironmentVariables, true>;
-    service = new OtpService(repository as unknown as OtpRepository, sender, config);
+    service = new OtpService(
+      repository as unknown as OtpRepository,
+      users as unknown as UsersRepository,
+      sender,
+      config,
+    );
     jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+  });
+
+  it('email không có tài khoản → phản hồi y hệt, không gửi thư', async () => {
+    users.findEmailStatus.mockResolvedValue(null);
+
+    await expect(service.send({ email, purpose })).resolves.toEqual({ expiresInSeconds: 300 });
+    expect(repository.save).toHaveBeenCalled();
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it('email đã xác minh: không gửi mã xác minh, vẫn gửi mã đặt lại mật khẩu', async () => {
+    users.findEmailStatus.mockResolvedValue({ emailVerifiedAt: new Date() });
+
+    await service.send({ email, purpose });
+    expect(sender.send).not.toHaveBeenCalled();
+
+    await service.send({ email, purpose: OtpPurpose.RESET_PASSWORD });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('đang trong thời gian chờ → giữ mã cũ, không gửi lại', async () => {
+    repository.claimCooldown.mockResolvedValue(false);
+
+    await expect(service.send({ email, purpose })).resolves.toEqual({ expiresInSeconds: 300 });
+    expect(repository.claimCooldown).toHaveBeenCalledWith(`${key}:cooldown`, 30);
+    expect(repository.save).not.toHaveBeenCalled();
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it('SMTP lỗi → vẫn trả thành công và ghi log', async () => {
+    sender.send.mockRejectedValue(new Error('smtp down'));
+
+    await expect(service.send({ email, purpose })).resolves.toEqual({ expiresInSeconds: 300 });
+    await new Promise(setImmediate);
+    expect(service['logger'].error).toHaveBeenCalledWith('OTP mail failed: smtp down');
   });
 
   it('gửi mã 6 chữ số, chỉ lưu hash kèm TTL', async () => {
@@ -42,19 +86,17 @@ describe('OtpService', () => {
     expect(result).toEqual({ expiresInSeconds: 300 });
   });
 
-  it('đúng mã → xác thực thành công và xoá mã (dùng một lần)', async () => {
+  it('đúng mã → xoá mã (dùng một lần)', async () => {
     repository.find.mockResolvedValue({ codeHash: sha256('123456'), attempts: 0 });
 
-    await expect(service.verify({ email, purpose, code: '123456' })).resolves.toEqual({
-      verified: true,
-    });
+    await expect(service.consume(email, purpose, '123456')).resolves.toBeUndefined();
     expect(repository.delete).toHaveBeenCalledWith(key);
   });
 
   it('không có mã (hết hạn) → OTP_INVALID', async () => {
     repository.find.mockResolvedValue(null);
 
-    await expect(service.verify({ email, purpose, code: '123456' })).rejects.toMatchObject({
+    await expect(service.consume(email, purpose, '123456')).rejects.toMatchObject({
       code: 'OTP_INVALID',
     });
   });
@@ -63,7 +105,7 @@ describe('OtpService', () => {
     repository.find.mockResolvedValue({ codeHash: sha256('123456'), attempts: 0 });
     repository.incrementAttempts.mockResolvedValue(1);
 
-    await expect(service.verify({ email, purpose, code: '000000' })).rejects.toMatchObject({
+    await expect(service.consume(email, purpose, '000000')).rejects.toMatchObject({
       code: 'OTP_INVALID',
     });
     expect(repository.incrementAttempts).toHaveBeenCalledWith(key);
@@ -74,7 +116,7 @@ describe('OtpService', () => {
     repository.find.mockResolvedValue({ codeHash: sha256('123456'), attempts: 2 });
     repository.incrementAttempts.mockResolvedValue(3);
 
-    await expect(service.verify({ email, purpose, code: '000000' })).rejects.toMatchObject({
+    await expect(service.consume(email, purpose, '000000')).rejects.toMatchObject({
       code: 'OTP_TOO_MANY_ATTEMPTS',
     });
     expect(repository.delete).toHaveBeenCalledWith(key);
@@ -83,13 +125,13 @@ describe('OtpService', () => {
   it('đã hết lượt thì kể cả đúng mã cũng bị từ chối', async () => {
     repository.find.mockResolvedValue({ codeHash: sha256('123456'), attempts: 3 });
 
-    await expect(service.verify({ email, purpose, code: '123456' })).rejects.toMatchObject({
+    await expect(service.consume(email, purpose, '123456')).rejects.toMatchObject({
       code: 'OTP_TOO_MANY_ATTEMPTS',
     });
   });
 
   it('Redis lỗi → 503 SERVICE_UNAVAILABLE, không gửi mã', async () => {
-    repository.save.mockRejectedValue(new Error('Connection is closed.'));
+    repository.claimCooldown.mockRejectedValue(new Error('Connection is closed.'));
 
     await expect(service.send({ email, purpose })).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
